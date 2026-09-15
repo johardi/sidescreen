@@ -1,0 +1,13 @@
+{
+  "session_id": "6f0c6b9a-2a2b-4a4d-9d8e-1c3f5a7b9d01",
+  "transcript_path": "/Users/example/.claude/projects/-Users-example-proj/6f0c6b9a-2a2b-4a4d-9d8e-1c3f5a7b9d01.jsonl",
+  "cwd": "/Users/example/proj",
+  "permission_mode": "default",
+  "effort": "high",
+  "hook_event_name": "Stop",
+  "stop_hook_active": false,
+  "background_tasks": [],
+  "session_crons": [],
+  "prompt_id": "b1f4c3d2-7e6a-4c1b-9a0d-2f3e4d5c6b7a",
+  "last_assistant_message": "banana"
+}
