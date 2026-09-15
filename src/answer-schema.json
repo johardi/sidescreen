@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "properties": {
+    "answer": {
+      "type": "string",
+      "description": "The answer, in markdown. When nothing documents the answer, say so plainly."
+    },
+    "source": {
+      "type": "string",
+      "enum": ["code", "transcript", "spec", "none"],
+      "description": "Where the evidence came from: the project's code, the main session transcript, a project specification document, or none."
+    },
+    "sourceDetail": {
+      "type": "string",
+      "description": "Exactly where: a file and line, a transcript turn, or a specification heading. Empty when source is none."
+    }
+  },
+  "required": ["answer", "source", "sourceDetail"],
+  "additionalProperties": false
+}

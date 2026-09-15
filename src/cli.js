@@ -6,6 +6,7 @@ import { ingest } from './ingest.js';
 import { defaultSettingsPath, setupHooks } from './setup-hooks.js';
 import { Store, defaultStateDir } from './store.js';
 import { DEFAULT_PORT, createServer } from './server.js';
+import { createCodexDispatch, dispatchSettings } from './dispatch.js';
 
 /**
  * @typedef {object} CliIo
@@ -33,6 +34,11 @@ Usage:
 
 Environment:
   ANNOTATR_STATE_DIR                      Where the store lives (default: $XDG_STATE_HOME/annotatr)
+  ANNOTATR_CODEX_BIN                      Sub-agent command (default: codex)
+  ANNOTATR_MODEL                          Model passed to the sub-agent (default: its own)
+  ANNOTATR_DISPATCH_TIMEOUT_MS            Time bound per question (default: 300000)
+  ANNOTATR_CONVENTIONS_FILES              Files forwarded as conventions, path-delimited
+                                          (default: ~/.claude/CLAUDE.md, ./CLAUDE.md, ./AGENTS.md)
 `;
 
 /**
@@ -118,12 +124,14 @@ async function serve(argv, io) {
   const store = new Store(defaultStateDir(io.env));
   const server = createServer({
     store,
-    dispatch: async () => ({ ok: false, error: 'Sub-agent dispatch is not configured in this build.' }),
+    dispatch: createCodexDispatch({ env: io.env }),
     env: io.env,
     log: (message) => io.stderr.write(`${message}\n`),
   });
   const url = await server.listen({ port });
+  const settings = dispatchSettings(io.env);
   io.stdout.write(`annotatr listening on ${url}\n`);
+  io.stdout.write(`sub-agent: ${settings.codexBin} (read-only, ${Math.round(settings.timeoutMs / 1000)}s timeout${settings.model ? `, model ${settings.model}` : ''})\n`);
   if (options.open === true) openInBrowser(url);
 
   await new Promise((resolve) => {
