@@ -1,0 +1,43 @@
+<h1>Summary of the change</h1>
+<p>The store is now a single JSON file under <code>ANNOTATR_STATE_DIR</code>, written through one async mutex.
+Two concurrent ingests <strong>cannot</strong> lose a write, and a <em>corrupt</em> file is an error rather than a reset.</p>
+<h2>What changed</h2>
+<ul>
+<li><code>src/store.js</code>: added <code>Store.update()</code> with a directory lock</li>
+<li><code>src/mutex.js</code>: a promise-chain mutex</li>
+<li><code>test/store.test.js</code>: fires two concurrent <code>annotatr ingest</code> processes</li>
+</ul>
+<ol>
+<li>Read the current state</li>
+<li>Apply the mutator</li>
+<li>Rename the temporary file into place</li>
+</ol>
+<pre><code class="language-js">await store.update((state) =&gt; {
+  state.turns[turn.promptId] = turn;
+});
+</code></pre>
+<pre><code>plain fence without a language
+</code></pre>
+<blockquote>
+<p>The lock is a directory because <code>mkdir</code> is atomic everywhere Node runs.</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>store.json</code></td>
+<td>the state</td>
+</tr>
+<tr>
+<td><code>store.lock</code></td>
+<td>the lock</td>
+</tr>
+</tbody></table>
+<p>See <a href="https://example.com/design" rel="noopener">the design</a> and a bad link.</p>
+<p>Raw HTML like &lt;script&gt;alert('x')&lt;/script&gt; and &lt;b&gt;bold&lt;/b&gt; is shown, not run.</p>
+<p>&lt;div class=&quot;callout&quot;&gt;A block of raw HTML.&lt;/div&gt;</p>
+<p>Done. Run <code>npm test</code> to verify.</p>
