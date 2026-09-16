@@ -23,6 +23,7 @@ const cancelButton = /** @type {HTMLButtonElement} */ (document.getElementById('
 const submitButton = /** @type {HTMLButtonElement} */ (document.getElementById('ask-submit'));
 const carryBackSection = /** @type {HTMLElement} */ (document.getElementById('carry-back'));
 const carryBackCount = /** @type {HTMLElement} */ (document.getElementById('carry-back-count'));
+const carryBackSent = /** @type {HTMLElement} */ (document.getElementById('carry-back-sent'));
 const carryBackList = /** @type {HTMLElement} */ (document.getElementById('carry-back-list'));
 const carryBackForm = /** @type {HTMLFormElement} */ (document.getElementById('carry-back-form'));
 const carryBackText = /** @type {HTMLTextAreaElement} */ (document.getElementById('carry-back-text'));
@@ -470,12 +471,15 @@ function element(tag, attributes = {}, text) {
 
 function renderCarryBack() {
   const pending = state.carryBack.filter((entry) => entry.emittedAt === null);
+  const sent = state.carryBack.length - pending.length;
   carryBackCount.textContent = pending.length === 0 ? 'nothing pending' : `${pending.length} pending`;
+  carryBackSent.textContent = sent === 0 ? '' : `${sent} sent to the terminal`;
   carryBackList.replaceChildren();
-  for (const entry of state.carryBack) {
-    const item = element('li', { class: 'carry-back-entry', 'data-entry-id': entry.id, 'data-state': entry.emittedAt === null ? 'pending' : 'sent' });
+  // Sent entries have done their job and would only invite a second reading; the count above is their trace.
+  for (const entry of pending) {
+    const item = element('li', { class: 'carry-back-entry', 'data-entry-id': entry.id });
     item.append(element('span', { class: 'carry-back-entry-text' }, entry.text));
-    if (entry.emittedAt === null) {
+    {
       const remove = element('button', { type: 'button', class: 'carry-back-remove', 'aria-label': 'Remove this entry' }, 'Remove');
       remove.addEventListener('click', async () => {
         remove.disabled = true;
@@ -490,8 +494,6 @@ function renderCarryBack() {
         }
       });
       item.append(remove);
-    } else {
-      item.append(element('span', { class: 'carry-back-sent', title: `Sent to the terminal at ${entry.emittedAt}` }, 'sent'));
     }
     carryBackList.append(item);
   }

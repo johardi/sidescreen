@@ -410,11 +410,10 @@ button:disabled { opacity: 0.6; cursor: default; }
   border-radius: 8px;
   background: var(--bg);
 }
-.carry-back-entry[data-state="sent"] { color: var(--fg-muted); border-style: dashed; }
 .carry-back-entry-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .carry-back-remove { font-size: 12px; padding: 2px 8px; color: var(--fg-muted); }
 .carry-back-remove:hover { color: var(--danger); border-color: var(--danger); }
-.carry-back-sent { font-size: 12px; color: var(--ok); }
+.carry-back-sent-note { font-size: 12px; color: var(--ok); }
 .carry-back-form { display: flex; flex-direction: column; gap: 6px; max-width: 76ch; }
 .carry-back-text {
   width: 100%;

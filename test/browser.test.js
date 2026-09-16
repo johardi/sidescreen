@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openBrowser, dragSelect } from './browser-helpers.js';
 import { sampleTurn, startServer, waitForAnswer } from './server-helpers.js';
+import { runCli } from './helpers.js';
 
 /** @type {import('../src/server.js').Dispatch} */
 const codeSourcedStub = async ({ exchange }) => ({
@@ -327,5 +328,36 @@ test('6.1 carry-back entries added in the page survive a reload, and an answer c
   await page.locator('.carry-back-entry').nth(1).waitFor({ state: 'detached' });
   await page.reload();
   assert.deepEqual(await page.locator('.carry-back-entry-text').allTextContents(), ['The directory lock stays.']);
+  assert.deepEqual(consoleErrors, []);
+});
+
+test('entries leave the page once they have been carried back, and the page learns it live', async (t) => {
+  const { url, stateDir } = await startServer(t);
+  for (const text of ['First conclusion.', 'Second conclusion.']) {
+    await fetch(new URL('/api/sessions/session-1/carry-back', url), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+  }
+  const { page, consoleErrors } = await openBrowser(t);
+  await page.goto(new URL('/turns/prompt-1', url).href);
+  assert.equal(await page.locator('.carry-back-entry').count(), 2);
+  assert.equal(await page.locator('#carry-back-count').textContent(), '2 pending');
+  assert.equal(await page.locator('#carry-back-sent').textContent(), '');
+
+  // The next prompt's hook emits from another process; the page must notice on its own.
+  const emitted = await runCli(['carry-back', '--emit', '--session', 'session-1'], { env: { ANNOTATR_STATE_DIR: stateDir } });
+  assert.equal(emitted.code, 0, emitted.stderr);
+  assert.match(emitted.stdout, /First conclusion.\n- Second conclusion./);
+
+  await page.locator('.carry-back-entry').first().waitFor({ state: 'detached', timeout: 5_000 });
+  assert.equal(await page.locator('.carry-back-entry').count(), 0, 'sent entries are no longer listed');
+  assert.equal(await page.locator('#carry-back-count').textContent(), 'nothing pending');
+  assert.equal(await page.locator('#carry-back-sent').textContent(), '2 sent to the terminal');
+
+  await page.reload();
+  assert.equal(await page.locator('.carry-back-entry').count(), 0, 'and they stay gone after a reload');
+  assert.equal(await page.locator('#carry-back-sent').textContent(), '2 sent to the terminal');
   assert.deepEqual(consoleErrors, []);
 });

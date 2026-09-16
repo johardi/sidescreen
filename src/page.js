@@ -42,7 +42,8 @@ ${documentHtml}
     <header class="carry-back-header">
       <h2 class="carry-back-title" id="carry-back-title">Carry back</h2>
       <span class="carry-back-count" id="carry-back-count"></span>
-      <span class="carry-back-hint">Only these lines reach the terminal, as context on your next prompt in this session.</span>
+      <span class="carry-back-sent-note" id="carry-back-sent"></span>
+      <span class="carry-back-hint">Only these lines reach the terminal, as context on your next prompt in this session. Once sent, they leave this list.</span>
     </header>
     <ul class="carry-back-list" id="carry-back-list"></ul>
     <form class="carry-back-form" id="carry-back-form">
