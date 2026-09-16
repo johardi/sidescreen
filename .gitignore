@@ -1,4 +1,37 @@
+# Dependencies
 node_modules/
-.DS_Store
+
+# Package output
+*.tgz
+
+# Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Test and coverage output
 test-results/
+playwright-report/
+coverage/
+.nyc_output/
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Claude Code per-machine settings
+.claude
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
