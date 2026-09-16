@@ -15,7 +15,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { renderMarkdown } from './render-markdown.js';
 import { renderErrorPage, renderIndexPage, renderTurnPage } from './page.js';
 import { listTurns } from './turns.js';
-import { createThread, listThreadsForTurn, validateAnchor } from './threads.js';
+import { createThread, createExchange, latestForkable, listThreadsForTurn, validateAnchor } from './threads.js';
 import { isIngestHookRegistered } from './setup-hooks.js';
 import { STORE_FILE_NAME } from './store.js';
 
@@ -29,6 +29,7 @@ import { STORE_FILE_NAME } from './store.js';
  * @property {Turn} turn
  * @property {Thread} thread
  * @property {Exchange} exchange
+ * @property {import('./dispatch.js').DispatchTarget} target Which sub-agent session to start from.
  */
 
 /**
@@ -203,6 +204,8 @@ export class AnnotatrServer {
     if (method === 'GET' && (match = /^\/api\/turns\/([^/]+)$/.exec(path))) return this.#apiTurn(res, decodeURIComponent(match[1]));
     if (method === 'POST' && (match = /^\/api\/turns\/([^/]+)\/threads$/.exec(path))) return this.#apiCreateThread(req, res, decodeURIComponent(match[1]));
     if (method === 'GET' && (match = /^\/api\/threads\/([^/]+)$/.exec(path))) return this.#apiThread(res, decodeURIComponent(match[1]));
+    if (method === 'POST' && (match = /^\/api\/threads\/([^/]+)\/exchanges$/.exec(path))) return this.#apiFollowUp(req, res, decodeURIComponent(match[1]));
+    if (method === 'POST' && (match = /^\/api\/threads\/([^/]+)\/branches$/.exec(path))) return this.#apiBranch(req, res, decodeURIComponent(match[1]));
     if (method === 'GET' && path === '/api/events') return this.#events(req, res);
 
     if (path.startsWith('/api/')) sendJson(res, 404, { error: 'Not found' });
@@ -317,7 +320,7 @@ export class AnnotatrServer {
 
     /** @type {Thread|null} */
     let thread = null;
-    await this.store.update((state) => {
+    const latestState = await this.store.update((state) => {
       const turn = state.turns[promptId];
       if (!turn) return;
       thread = createThread({ turn, anchor, selectedText, question });
@@ -329,8 +332,118 @@ export class AnnotatrServer {
     }
     const created = /** @type {Thread} */ (thread);
     this.broadcast({ type: 'thread-created', threadId: created.id, promptId });
-    this.#track(this.#answerExchange(created.id, created.exchanges[0].id));
+    this.#track(this.#answerExchange(created.id, created.exchanges[0].id, { mode: 'new', cwd: latestState.turns[promptId].cwd }));
     sendJson(res, 201, { thread: presentThread(created) });
+  }
+
+  /**
+   * Ask a follow-up in an existing thread. It forks the session of the
+   * newest answered exchange, so the thread's context carries forward.
+   *
+   * @param {http.IncomingMessage} req
+   * @param {http.ServerResponse} res
+   * @param {string} threadId
+   */
+  async #apiFollowUp(req, res, threadId) {
+    const body = await this.#readJsonBody(req, res);
+    if (body === null) return;
+    const question = typeof body.question === 'string' ? body.question.trim() : '';
+    if (question === '') {
+      sendJson(res, 400, { error: 'Expected { question }' });
+      return;
+    }
+
+    /** @type {{ ok: { thread: Thread, exchange: Exchange, target: import('./dispatch.js').DispatchTarget }|null, failure: { status: number, error: string }|null }} */
+    const outcome = { ok: null, failure: null };
+    await this.store.update((state) => {
+      const thread = state.threads[threadId];
+      const turn = thread ? state.turns[thread.promptId] : undefined;
+      if (!thread || !turn) {
+        outcome.failure = { status: 404, error: 'Thread not found' };
+        return;
+      }
+      const last = thread.exchanges[thread.exchanges.length - 1];
+      if (last && last.status === 'pending') {
+        outcome.failure = { status: 409, error: 'Wait for the current answer before asking a follow-up' };
+        return;
+      }
+      const forkable = latestForkable(thread);
+      const exchange = createExchange(question);
+      thread.exchanges.push(exchange);
+      outcome.ok = {
+        thread,
+        exchange,
+        target: forkable ? { mode: 'fork', sessionId: /** @type {string} */ (forkable.subAgentSessionId) } : { mode: 'new', cwd: turn.cwd },
+      };
+    });
+    if (outcome.failure !== null || outcome.ok === null) {
+      const { status, error } = outcome.failure ?? { status: 500, error: 'Follow-up was not recorded' };
+      sendJson(res, status, { error });
+      return;
+    }
+    const { thread, exchange, target } = outcome.ok;
+    this.broadcast({ type: 'thread-updated', threadId });
+    this.#track(this.#answerExchange(threadId, exchange.id, target));
+    sendJson(res, 201, { thread: presentThread(thread), exchangeId: exchange.id });
+  }
+
+  /**
+   * Branch a new thread from one answered exchange. The branch forks that
+   * exchange's session, so it sees the conversation up to that answer only,
+   * however far the parent thread has moved on since.
+   *
+   * @param {http.IncomingMessage} req
+   * @param {http.ServerResponse} res
+   * @param {string} parentThreadId
+   */
+  async #apiBranch(req, res, parentThreadId) {
+    const body = await this.#readJsonBody(req, res);
+    if (body === null) return;
+    const question = typeof body.question === 'string' ? body.question.trim() : '';
+    const exchangeId = typeof body.exchangeId === 'string' ? body.exchangeId : '';
+    if (question === '' || exchangeId === '') {
+      sendJson(res, 400, { error: 'Expected { exchangeId, question }' });
+      return;
+    }
+
+    /** @type {{ ok: { branch: Thread, sessionId: string }|null, failure: { status: number, error: string }|null }} */
+    const outcome = { ok: null, failure: null };
+    await this.store.update((state) => {
+      const parent = state.threads[parentThreadId];
+      const turn = parent ? state.turns[parent.promptId] : undefined;
+      if (!parent || !turn) {
+        outcome.failure = { status: 404, error: 'Thread not found' };
+        return;
+      }
+      const exchange = parent.exchanges.find((candidate) => candidate.id === exchangeId);
+      if (!exchange) {
+        outcome.failure = { status: 404, error: 'Exchange not found in that thread' };
+        return;
+      }
+      if (exchange.status !== 'answered' || !exchange.subAgentSessionId) {
+        outcome.failure = { status: 409, error: 'Only an answered exchange can be branched from' };
+        return;
+      }
+      const branch = createThread({
+        turn,
+        anchor: parent.anchor,
+        selectedText: parent.selectedText,
+        question,
+        parentThreadId: parent.id,
+        branchedFromExchangeId: exchange.id,
+      });
+      state.threads[branch.id] = branch;
+      outcome.ok = { branch, sessionId: exchange.subAgentSessionId };
+    });
+    if (outcome.failure !== null || outcome.ok === null) {
+      const { status, error } = outcome.failure ?? { status: 500, error: 'Branch was not recorded' };
+      sendJson(res, status, { error });
+      return;
+    }
+    const { branch, sessionId } = outcome.ok;
+    this.broadcast({ type: 'thread-created', threadId: branch.id, promptId: branch.promptId });
+    this.#track(this.#answerExchange(branch.id, branch.exchanges[0].id, { mode: 'fork', sessionId }));
+    sendJson(res, 201, { thread: presentThread(branch) });
   }
 
   /**
@@ -338,8 +451,9 @@ export class AnnotatrServer {
    *
    * @param {string} threadId
    * @param {string} exchangeId
+   * @param {import('./dispatch.js').DispatchTarget} target
    */
-  async #answerExchange(threadId, exchangeId) {
+  async #answerExchange(threadId, exchangeId, target) {
     const state = await this.store.read();
     const thread = state.threads[threadId];
     const exchange = thread?.exchanges.find((candidate) => candidate.id === exchangeId);
@@ -349,21 +463,22 @@ export class AnnotatrServer {
     /** @type {DispatchResult} */
     let result;
     try {
-      result = await this.dispatch({ turn, thread, exchange });
+      result = await this.dispatch({ turn, thread, exchange, target });
     } catch (error) {
       result = { ok: false, error: /** @type {Error} */ (error).message };
     }
 
     await this.store.update((latest) => {
-      const target = latest.threads[threadId];
-      const targetExchange = target?.exchanges.find((candidate) => candidate.id === exchangeId);
-      if (!target || !targetExchange) return;
+      const owner = latest.threads[threadId];
+      const targetExchange = owner?.exchanges.find((candidate) => candidate.id === exchangeId);
+      if (!owner || !targetExchange) return;
       targetExchange.answeredAt = new Date().toISOString();
       if (result.ok) {
         targetExchange.status = 'answered';
         targetExchange.answer = result.answer;
         targetExchange.error = null;
-        if (result.subAgentSessionId && !target.subAgentSessionId) target.subAgentSessionId = result.subAgentSessionId;
+        targetExchange.subAgentSessionId = result.subAgentSessionId;
+        if (result.subAgentSessionId) owner.subAgentSessionId = result.subAgentSessionId;
       } else {
         targetExchange.status = 'failed';
         targetExchange.error = result.error;

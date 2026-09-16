@@ -101,3 +101,36 @@ function quote(text) {
     .map((line) => `> ${line}`)
     .join('\n');
 }
+
+/**
+ * The prompt for a question that continues an answered exchange.
+ *
+ * The forked session already holds the agent's output, the selected range,
+ * and the earlier answers, so only the rules, the conventions, and the new
+ * question travel.
+ *
+ * @param {{ question: string, selectedText: string, conventions: string }} input
+ * @returns {string}
+ */
+export function buildFollowUpPrompt(input) {
+  return [
+    "A follow-up question in the same review. You already have the agent's output, the range the user selected, and your earlier answers in this conversation.",
+    'You still run read-only, and you still declare exactly one source from code, transcript, spec, or none. "No documented intent found." with source `none` remains a complete answer.',
+    '',
+    CONVENTIONS_HEADING,
+    '',
+    input.conventions.trim() === '' ? '(none found)' : input.conventions.trim(),
+    '',
+    '## The range the user selected',
+    '',
+    quote(input.selectedText),
+    '',
+    '## The question',
+    '',
+    input.question.trim(),
+    '',
+    '## Response format',
+    '',
+    'Respond as JSON matching the schema you were given: `answer` (markdown), `source` (one of code, transcript, spec, none), `sourceDetail` (a file and line, a transcript turn, or a spec heading; empty for none).',
+  ].join('\n');
+}

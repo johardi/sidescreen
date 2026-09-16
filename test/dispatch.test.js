@@ -17,7 +17,7 @@ import {
   parseCodexEvents,
   runCommand,
 } from '../src/dispatch.js';
-import { CONVENTIONS_HEADING, buildPrompt } from '../src/dispatch-prompt.js';
+import { CONVENTIONS_HEADING, buildFollowUpPrompt, buildPrompt } from '../src/dispatch-prompt.js';
 import { loadConventions } from '../src/conventions.js';
 import { createThread } from '../src/threads.js';
 
@@ -304,4 +304,43 @@ test('dispatch settings come from the environment with safe defaults', () => {
     model: 'm',
   });
   assert.equal(dispatchSettings({ ANNOTATR_DISPATCH_TIMEOUT_MS: 'nope' }).timeoutMs, 300_000);
+});
+
+// ---- Group 5: continuing an answer forks its session ------------------------
+
+test('the follow-up prompt carries the rules, the conventions, and the question, but not the document again', () => {
+  const prompt = buildFollowUpPrompt({ question: 'Why brown?', selectedText: 'quick', conventions: 'RULE-FU: be brief.' });
+  assert.ok(prompt.includes(CONVENTIONS_HEADING));
+  assert.ok(prompt.includes('RULE-FU: be brief.'));
+  assert.ok(prompt.includes('Why brown?'));
+  assert.ok(prompt.includes('> quick'));
+  assert.ok(prompt.includes('read-only'));
+  assert.ok(prompt.includes('source'));
+  assert.ok(!prompt.includes("The agent's output being reviewed"));
+});
+
+test('dispatching with a fork target runs codex exec fork on that session with the follow-up prompt', async (t) => {
+  const cwd = await tempDir(t);
+  const argsFile = join(cwd, 'args.json');
+  const promptFile = join(cwd, 'prompt.txt');
+  const result = await dispatchQuestion({
+    ...fixture(cwd, 'A follow-up?'),
+    target: { mode: 'fork', sessionId: 'parent-session' },
+    codexBin: STUB_CODEX,
+    env: { ...process.env, STUB_CODEX_ARGS_TO: argsFile, STUB_CODEX_PROMPT_TO: promptFile },
+    timeoutMs: 10_000,
+    conventions: 'RULE-FORK',
+  });
+  assert.ok(result.ok, JSON.stringify(result));
+  if (result.ok) assert.ok(result.subAgentSessionId?.startsWith('fork-of-parent-session-'));
+
+  const args = JSON.parse(await readFile(argsFile, 'utf8'));
+  assert.deepEqual(args.slice(0, 2), ['exec', 'fork']);
+  assert.ok(args.includes(READ_ONLY_CONFIG));
+  assert.ok(args.includes('--skip-git-repo-check'));
+  assert.equal(args[args.length - 2], 'parent-session');
+  const prompt = await readFile(promptFile, 'utf8');
+  assert.ok(prompt.includes('A follow-up?'));
+  assert.ok(prompt.includes('RULE-FORK'));
+  assert.ok(!prompt.includes("The agent's output being reviewed"));
 });

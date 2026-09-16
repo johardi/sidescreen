@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openBrowser, dragSelect } from './browser-helpers.js';
-import { sampleTurn, startServer } from './server-helpers.js';
+import { sampleTurn, startServer, waitForAnswer } from './server-helpers.js';
 
 /** @type {import('../src/server.js').Dispatch} */
 const codeSourcedStub = async ({ exchange }) => ({
@@ -202,3 +202,100 @@ test('every source value renders as a badge beside the answer, and "none" is an 
     }
   }
 });
+
+// ---- Group 5: follow-ups, branches, tabs -------------------------------------
+
+/** @type {import('../src/server.js').Dispatch} */
+const lineageStub = async ({ exchange, target }) => ({
+  ok: true,
+  answer: { text: `Answer to ${exchange.question}`, source: 'code', sourceDetail: 'src/x.js:1' },
+  subAgentSessionId: target.mode === 'new' ? `root-${exchange.id}` : `fork-of-${target.sessionId}-${exchange.id}`,
+});
+
+/** @param {string} url */
+async function seedThread(url, question = 'first?') {
+  const response = await fetch(new URL('/api/turns/prompt-1/threads', url), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ anchor: { start: { path: [0], offset: 4 }, end: { path: [0], offset: 9 }, text: 'quick' }, selectedText: 'quick', question }),
+  });
+  const { thread } = await response.json();
+  return waitForAnswer(url, thread.id);
+}
+
+test('a follow-up typed in the thread column appends an answered exchange to the same thread', async (t) => {
+  const { url } = await startServer(t, { dispatch: lineageStub });
+  const thread = await seedThread(url);
+  const { page, consoleErrors } = await openBrowser(t);
+  await page.goto(new URL('/turns/prompt-1', url).href);
+
+  await page.locator('.follow-up-question').fill('and then?');
+  await page.keyboard.press('Enter');
+  await page.locator('.exchange').nth(1).waitFor();
+  await page.locator('.exchange').nth(1).locator('.source-badge').waitFor();
+  assert.deepEqual(await page.locator('.exchange .question').allTextContents(), ['first?', 'and then?']);
+  assert.equal(await page.locator('.branch-tabs').count(), 0, 'no tabs until a branch exists');
+
+  const { thread: updated } = await (await fetch(new URL(`/api/threads/${thread.id}`, url))).json();
+  assert.equal(updated.exchanges.length, 2);
+  assert.ok(updated.exchanges[1].subAgentSessionId.startsWith(`fork-of-${updated.exchanges[0].subAgentSessionId}-`));
+  assert.deepEqual(consoleErrors, []);
+});
+
+test('branching from an answer opens a sibling tab with its own question, and the mark count is unchanged', async (t) => {
+  const { url } = await startServer(t, { dispatch: lineageStub });
+  await seedThread(url);
+  const { page, consoleErrors } = await openBrowser(t);
+  await page.goto(new URL('/turns/prompt-1', url).href);
+
+  await page.locator('.branch-button').first().click();
+  await page.locator('.branch-question').fill('sideways?');
+  await page.locator('.branch-submit').click();
+
+  const tabs = page.locator('.branch-tab');
+  await tabs.nth(1).waitFor();
+  assert.deepEqual(await tabs.allTextContents(), ['main', 'b1']);
+  assert.equal(await page.locator('.branch-tab[aria-selected="true"]').textContent(), 'b1');
+  assert.equal(await page.locator('.thread .question').textContent(), 'sideways?');
+  assert.match((await page.locator('.thread-lineage').textContent()) ?? '', /Branched from answer 1 of main/);
+  await page.locator('.thread .source-badge').waitFor();
+  assert.equal(await page.locator('#document mark[data-annotatr-mark]').count(), 1, 'a branch shares its parent\'s anchor');
+
+  await tabs.first().click();
+  assert.equal(await page.locator('.thread .question').textContent(), 'first?');
+  assert.equal(await page.locator('.branch-tab[aria-selected="true"]').textContent(), 'main');
+  assert.deepEqual(consoleErrors, []);
+});
+
+test('5.5 five sibling branches stay usable as tabs at 400px width', async (t) => {
+  const { url } = await startServer(t, { dispatch: lineageStub });
+  const root = await seedThread(url);
+  for (let index = 1; index <= 5; index += 1) {
+    const response = await fetch(new URL(`/api/threads/${root.id}/branches`, url), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ exchangeId: root.exchanges[0].id, question: `branch ${index}?` }),
+    });
+    assert.equal(response.status, 201);
+    const { thread } = await response.json();
+    await waitForAnswer(url, thread.id);
+  }
+
+  const { page, consoleErrors } = await openBrowser(t, { width: 400, height: 800 });
+  await page.goto(new URL('/turns/prompt-1', url).href);
+  const tabs = page.locator('.branch-tab');
+  assert.equal(await tabs.count(), 6);
+  assert.deepEqual(await tabs.allTextContents(), ['main', 'b1', 'b2', 'b3', 'b4', 'b5']);
+
+  for (let index = 0; index < 6; index += 1) {
+    const box = await tabs.nth(index).boundingBox();
+    assert.ok(box && box.x >= 0 && box.x + box.width <= 400, `tab ${index} is within the viewport`);
+    await tabs.nth(index).click();
+    assert.equal(await page.locator('.thread .question').textContent(), index === 0 ? 'first?' : `branch ${index}?`);
+  }
+  const widths = await page.evaluate(() => ({ viewport: window.innerWidth, html: document.documentElement.scrollWidth }));
+  assert.ok(widths.html <= widths.viewport, 'no horizontal page scroll');
+  assert.equal(await page.locator('.thread-chip').count(), 1, 'branches are not extra top-level threads');
+  assert.deepEqual(consoleErrors, []);
+});
+

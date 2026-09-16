@@ -8,7 +8,7 @@
 
 import { spawn as nodeSpawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { buildPrompt } from './dispatch-prompt.js';
+import { buildFollowUpPrompt, buildPrompt } from './dispatch-prompt.js';
 import { loadConventions } from './conventions.js';
 
 /** @typedef {import('./threads.js').Answer} Answer */
@@ -49,10 +49,10 @@ export function buildCommand({ target, prompt, schemaPath = ANSWER_SCHEMA_PATH, 
       args = ['exec', '-s', SANDBOX_POLICY, '-c', READ_ONLY_CONFIG, '-C', target.cwd, '--skip-git-repo-check', ...output, ...modelArgs, prompt];
       break;
     case 'resume':
-      args = ['exec', 'resume', '-c', READ_ONLY_CONFIG, ...output, ...modelArgs, target.sessionId, prompt];
+      args = ['exec', 'resume', '-c', READ_ONLY_CONFIG, '--skip-git-repo-check', ...output, ...modelArgs, target.sessionId, prompt];
       break;
     case 'fork':
-      args = ['exec', 'fork', '-c', READ_ONLY_CONFIG, ...output, ...modelArgs, target.sessionId, prompt];
+      args = ['exec', 'fork', '-c', READ_ONLY_CONFIG, '--skip-git-repo-check', ...output, ...modelArgs, target.sessionId, prompt];
       break;
   }
   return { command: codexBin, args };
@@ -213,7 +213,7 @@ export function parseAnswer(finalText) {
 
 /**
  * @typedef {object} DispatchOptions
- * @property {DispatchTarget} [target] Defaults to a new session in the turn's cwd.
+ * @property {DispatchTarget} [target] Overrides the target the server chose; defaults to a new session in the turn's cwd.
  * @property {NodeJS.ProcessEnv} [env]
  * @property {string} [codexBin]
  * @property {number} [timeoutMs]
@@ -226,23 +226,26 @@ export function parseAnswer(finalText) {
 /**
  * Answer one exchange by running the sub-agent once.
  *
- * @param {DispatchInput & DispatchOptions} input
+ * @param {Omit<DispatchInput, 'target'> & DispatchOptions} input
  * @returns {Promise<DispatchResult>}
  */
 export async function dispatchQuestion(input) {
   const env = input.env ?? process.env;
   const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const conventions = input.conventions ?? (await loadConventions({ cwd: input.turn.cwd, env })).text;
-  const prompt = buildPrompt({
-    question: input.exchange.question,
-    selectedText: input.thread.selectedText,
-    message: input.turn.message,
-    cwd: input.turn.cwd,
-    transcriptPath: input.turn.transcriptPath,
-    conventions,
-    promptId: input.turn.promptId,
-  });
   const target = input.target ?? { mode: 'new', cwd: input.turn.cwd };
+  const prompt =
+    target.mode === 'new'
+      ? buildPrompt({
+          question: input.exchange.question,
+          selectedText: input.thread.selectedText,
+          message: input.turn.message,
+          cwd: input.turn.cwd,
+          transcriptPath: input.turn.transcriptPath,
+          conventions,
+          promptId: input.turn.promptId,
+        })
+      : buildFollowUpPrompt({ question: input.exchange.question, selectedText: input.thread.selectedText, conventions });
   const { command, args } = buildCommand({ target, prompt, schemaPath: input.schemaPath, codexBin: input.codexBin, model: input.model });
 
   /** @type {RunResult} */

@@ -320,3 +320,56 @@ button:disabled { opacity: 0.6; cursor: default; }
 .turn-project { font-weight: 600; }
 .turn-link time { color: var(--fg-muted); font-size: 13px; text-align: right; }
 .turn-preview { grid-column: 1 / -1; color: var(--fg-muted); font-size: 13px; overflow-wrap: anywhere; }
+
+/* Branches as tabs, never as a graph */
+
+.branch-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 6px;
+}
+.branch-tab {
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--fg-muted);
+}
+.branch-tab:hover { border-color: var(--line); }
+.branch-tab[aria-selected="true"] {
+  background: var(--bg);
+  border-color: var(--line);
+  color: var(--fg);
+  font-weight: 600;
+}
+.thread-lineage { margin: 0; font-size: 12px; color: var(--fg-muted); }
+
+/* Asking more within a thread */
+
+.exchange-actions { display: flex; justify-content: flex-end; }
+.branch-button { font-size: 12px; padding: 2px 10px; color: var(--fg-muted); }
+.branch-button:hover { color: var(--fg); border-color: var(--accent); }
+
+.follow-up-form, .branch-form { display: flex; flex-direction: column; gap: 6px; }
+.branch-form {
+  padding: 8px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+}
+.follow-up-question, .branch-question {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.follow-up-question:disabled { color: var(--fg-muted); background: var(--bg-muted); }
+.form-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.form-error { margin: 0; color: var(--danger); font-size: 13px; }
+

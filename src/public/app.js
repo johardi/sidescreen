@@ -4,8 +4,10 @@
 
 import { describeRange, resolveAnchor } from './anchor.js';
 import { clearMarks, wrapRange } from './marks.js';
+import { familyOf, rootOf, rootThreads } from './thread-tree.js';
 
-/** @typedef {import('../threads.js').Thread & { exchanges: (import('../threads.js').Exchange & { answerHtml: string|null })[], detached?: boolean }} PresentedThread */
+/** @typedef {import('../threads.js').Exchange & { answerHtml: string|null }} PresentedExchange */
+/** @typedef {Omit<import('../threads.js').Thread, 'exchanges'> & { exchanges: PresentedExchange[], detached?: boolean }} PresentedThread */
 /** @typedef {import('../types.js').Turn} Turn */
 
 const dataElement = /** @type {HTMLScriptElement} */ (document.getElementById('turn-data'));
@@ -27,6 +29,8 @@ const state = {
   activeThreadId: null,
   /** @type {import('./anchor.js').Anchor|null} */
   pendingAnchor: null,
+  /** @type {string|null} The exchange whose branch form is open. */
+  branchingFrom: null,
   /** @type {ReturnType<typeof setTimeout>|null} */
   pollTimer: null,
 };
@@ -125,17 +129,10 @@ popover.addEventListener('submit', async (event) => {
   if (question === '' || anchor === null) return;
   submitButton.disabled = true;
   try {
-    const response = await fetch(`/api/turns/${encodeURIComponent(state.turn.promptId)}/threads`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ anchor, selectedText: anchor.text, question }),
-    });
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      throw new Error(body.error ?? `Request failed with ${response.status}`);
-    }
-    const { thread } = /** @type {{ thread: PresentedThread }} */ (await response.json());
-    state.threads = [...state.threads.filter((existing) => existing.id !== thread.id), thread];
+    const { thread } = /** @type {{ thread: PresentedThread }} */ (
+      await postJson(`/api/turns/${encodeURIComponent(state.turn.promptId)}/threads`, { anchor, selectedText: anchor.text, question })
+    );
+    mergeThread(thread);
     state.activeThreadId = thread.id;
     hidePopover();
     window.getSelection()?.removeAllRanges();
@@ -156,9 +153,19 @@ function render() {
   renderThreadPane();
 }
 
+/** The thread shown in the column: the chosen one, else the newest root. */
+function activeThread() {
+  const chosen = state.threads.find((thread) => thread.id === state.activeThreadId);
+  if (chosen) return chosen;
+  const roots = rootThreads(state.threads);
+  return roots[roots.length - 1] ?? null;
+}
+
 function applyMarks() {
   clearMarks(documentElement);
-  state.threads.forEach((thread, index) => {
+  const active = activeThread();
+  const activeRootId = active ? rootOf(state.threads, active).id : null;
+  rootThreads(state.threads).forEach((thread, index) => {
     /** @type {Range} */
     let range;
     try {
@@ -170,7 +177,7 @@ function applyMarks() {
     thread.detached = range.toString() !== thread.anchor.text;
     /** @type {Record<string, string>} */
     const attributes = { 'data-thread-id': thread.id };
-    if (thread.id === state.activeThreadId) attributes['data-active'] = '';
+    if (thread.id === activeRootId) attributes['data-active'] = '';
     const marks = wrapRange(range, attributes);
     const last = marks[marks.length - 1];
     if (last) last.setAttribute('data-index', String(index + 1));
@@ -187,18 +194,20 @@ documentElement.addEventListener('click', (event) => {
 
 function renderThreadPane() {
   threadPane.replaceChildren();
-  if (state.threads.length === 0) {
+  const roots = rootThreads(state.threads);
+  const active = activeThread();
+  if (roots.length === 0 || active === null) {
     threadPane.append(element('p', { class: 'thread-empty' }, 'Select text in the document to ask about it.'));
     return;
   }
-  const active = state.threads.find((thread) => thread.id === state.activeThreadId) ?? state.threads[state.threads.length - 1];
   state.activeThreadId = active.id;
+  const root = rootOf(state.threads, active);
 
   const list = element('ul', { class: 'thread-list' });
-  state.threads.forEach((thread, index) => {
+  roots.forEach((thread, index) => {
     const chip = element(
       'button',
-      { type: 'button', class: 'thread-chip', 'aria-pressed': String(thread.id === active.id), 'data-thread-id': thread.id },
+      { type: 'button', class: 'thread-chip', 'aria-pressed': String(thread.id === root.id), 'data-thread-id': thread.id },
       `#${index + 1}`,
     );
     chip.addEventListener('click', () => {
@@ -209,36 +218,100 @@ function renderThreadPane() {
     item.append(chip);
     list.append(item);
   });
-  threadPane.append(list, renderThread(active, state.threads.indexOf(active) + 1));
+  threadPane.append(list, renderThread(active, root, roots.indexOf(root) + 1));
 }
 
 /**
- * @param {PresentedThread} thread
- * @param {number} index 1-based position among the turn's threads.
+ * @param {PresentedThread} thread The thread being shown, possibly a branch.
+ * @param {PresentedThread} root The root of its family.
+ * @param {number} index 1-based position of the root among the turn's threads.
  */
-function renderThread(thread, index) {
+function renderThread(thread, root, index) {
   const header = element('header', { class: 'thread-header' });
   header.append(element('span', { class: 'thread-index' }, `Thread #${index}`));
-  header.append(element('blockquote', { class: 'thread-selection' }, thread.selectedText));
-  if (thread.detached) {
+  header.append(element('blockquote', { class: 'thread-selection' }, root.selectedText));
+  if (root.detached) {
     header.append(element('p', { class: 'thread-detached' }, 'The document changed since this was anchored; the highlight may be off.'));
   }
 
+  const section = element('section', { class: 'thread', 'data-thread-id': thread.id });
+  section.append(header);
+
+  const family = familyOf(state.threads, root);
+  if (family.length > 1) section.append(renderBranchTabs(family, thread));
+  if (thread.parentThreadId !== null) section.append(element('p', { class: 'thread-lineage' }, lineageText(thread)));
+
   const exchanges = element('ol', { class: 'exchanges' });
-  for (const exchange of thread.exchanges) {
+  thread.exchanges.forEach((exchange, position) => {
     const item = element('li', { class: 'exchange', 'data-exchange-id': exchange.id });
     item.append(element('div', { class: 'question' }, exchange.question));
     item.append(renderAnswer(exchange));
+    if (exchange.status === 'answered' && exchange.subAgentSessionId) {
+      const actions = element('div', { class: 'exchange-actions' });
+      const branchButton = element('button', { type: 'button', class: 'branch-button', title: `Start a new line of questioning from answer ${position + 1}` }, 'Branch from here');
+      branchButton.addEventListener('click', () => {
+        state.branchingFrom = state.branchingFrom === exchange.id ? null : exchange.id;
+        render();
+      });
+      actions.append(branchButton);
+      item.append(actions);
+      if (state.branchingFrom === exchange.id) item.append(renderBranchForm(thread, exchange));
+    }
     exchanges.append(item);
-  }
-
-  const section = element('section', { class: 'thread', 'data-thread-id': thread.id });
-  section.append(header, exchanges);
+  });
+  section.append(exchanges, renderFollowUpForm(thread));
   return section;
 }
 
 /**
- * @param {PresentedThread['exchanges'][number]} exchange
+ * @param {PresentedThread[]} family Root first, then branches.
+ * @param {PresentedThread} active
+ */
+function renderBranchTabs(family, active) {
+  const tabs = element('div', { class: 'branch-tabs', role: 'tablist', 'aria-label': 'Branches of this thread' });
+  family.forEach((member, position) => {
+    const tab = element(
+      'button',
+      {
+        type: 'button',
+        role: 'tab',
+        class: 'branch-tab',
+        'aria-selected': String(member.id === active.id),
+        'data-thread-id': member.id,
+        title: position === 0 ? 'The original line of questioning' : lineageText(member),
+      },
+      familyLabel(family, member),
+    );
+    tab.addEventListener('click', () => {
+      state.activeThreadId = member.id;
+      state.branchingFrom = null;
+      render();
+    });
+    tabs.append(tab);
+  });
+  return tabs;
+}
+
+/**
+ * @param {PresentedThread[]} family
+ * @param {PresentedThread} member
+ */
+function familyLabel(family, member) {
+  const position = family.indexOf(member);
+  return position <= 0 ? 'main' : `b${position}`;
+}
+
+/** @param {PresentedThread} thread */
+function lineageText(thread) {
+  const parent = state.threads.find((candidate) => candidate.id === thread.parentThreadId);
+  if (!parent) return 'Branched from another thread';
+  const answerNumber = parent.exchanges.findIndex((exchange) => exchange.id === thread.branchedFromExchangeId) + 1;
+  const parentLabel = familyLabel(familyOf(state.threads, parent), parent);
+  return `Branched from answer ${answerNumber || '?'} of ${parentLabel}`;
+}
+
+/**
+ * @param {PresentedExchange} exchange
  */
 function renderAnswer(exchange) {
   const answer = element('div', { class: 'answer', 'data-status': exchange.status });
@@ -260,6 +333,101 @@ function renderAnswer(exchange) {
   return answer;
 }
 
+/** @param {PresentedThread} thread */
+function renderFollowUpForm(thread) {
+  const last = thread.exchanges[thread.exchanges.length - 1];
+  const waiting = last !== undefined && last.status === 'pending';
+  const form = element('form', { class: 'follow-up-form' });
+  const input = element('textarea', {
+    class: 'follow-up-question',
+    rows: '2',
+    'aria-label': 'Follow-up question',
+    placeholder: waiting ? 'Waiting for the current answer…' : 'Ask a follow-up…',
+  });
+  const button = element('button', { type: 'submit', class: 'button-primary follow-up-button' }, 'Follow up');
+  input.disabled = waiting;
+  button.disabled = waiting;
+  input.addEventListener('keydown', submitOnEnter(form));
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const question = input.value.trim();
+    if (question === '') return;
+    button.disabled = true;
+    try {
+      const { thread: updated } = /** @type {{ thread: PresentedThread }} */ (await postJson(`/api/threads/${encodeURIComponent(thread.id)}/exchanges`, { question }));
+      mergeThread(updated);
+      render();
+      schedulePoll();
+    } catch (error) {
+      showFormError(form, /** @type {Error} */ (error));
+      button.disabled = false;
+    }
+  });
+  const actions = element('div', { class: 'form-actions' });
+  actions.append(button);
+  form.append(input, actions);
+  return form;
+}
+
+/**
+ * @param {PresentedThread} thread
+ * @param {PresentedExchange} exchange
+ */
+function renderBranchForm(thread, exchange) {
+  const form = element('form', { class: 'branch-form' });
+  const input = element('textarea', { class: 'branch-question', rows: '2', 'aria-label': 'Question for the new branch', placeholder: 'Ask on a new branch…' });
+  const cancel = element('button', { type: 'button', class: 'button-secondary' }, 'Cancel');
+  const button = element('button', { type: 'submit', class: 'button-primary branch-submit' }, 'Ask on a branch');
+  cancel.addEventListener('click', () => {
+    state.branchingFrom = null;
+    render();
+  });
+  input.addEventListener('keydown', submitOnEnter(form));
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const question = input.value.trim();
+    if (question === '') return;
+    button.disabled = true;
+    try {
+      const { thread: branch } = /** @type {{ thread: PresentedThread }} */ (
+        await postJson(`/api/threads/${encodeURIComponent(thread.id)}/branches`, { exchangeId: exchange.id, question })
+      );
+      mergeThread(branch);
+      state.activeThreadId = branch.id;
+      state.branchingFrom = null;
+      render();
+      schedulePoll();
+    } catch (error) {
+      showFormError(form, /** @type {Error} */ (error));
+      button.disabled = false;
+    }
+  });
+  const actions = element('div', { class: 'form-actions' });
+  actions.append(cancel, button);
+  form.append(input, actions);
+  setTimeout(() => input.focus({ preventScroll: true }), 0);
+  return form;
+}
+
+/** @param {HTMLFormElement} form */
+function submitOnEnter(form) {
+  return (/** @type {KeyboardEvent} */ event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      form.requestSubmit();
+    }
+  };
+}
+
+/**
+ * @param {HTMLFormElement} form
+ * @param {Error} error
+ */
+function showFormError(form, error) {
+  form.querySelector('.form-error')?.remove();
+  form.append(element('p', { class: 'form-error' }, error.message));
+}
+
 /** @param {string} iso */
 function elapsedSince(iso) {
   const seconds = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
@@ -278,6 +446,29 @@ function element(tag, attributes = {}, text) {
   for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, value);
   if (text !== undefined) node.textContent = text;
   return node;
+}
+
+// ---- Data ------------------------------------------------------------------
+
+/**
+ * @param {string} path
+ * @param {unknown} body
+ * @returns {Promise<unknown>}
+ */
+async function postJson(path, body) {
+  const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!response.ok) {
+    const payload = /** @type {{ error?: string }} */ (await response.json().catch(() => ({})));
+    throw new Error(payload.error ?? `Request failed with ${response.status}`);
+  }
+  return response.json();
+}
+
+/** @param {PresentedThread} thread */
+function mergeThread(thread) {
+  const index = state.threads.findIndex((existing) => existing.id === thread.id);
+  if (index >= 0) state.threads[index] = thread;
+  else state.threads.push(thread);
 }
 
 // ---- Live updates ----------------------------------------------------------
