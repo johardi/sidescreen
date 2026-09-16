@@ -164,6 +164,21 @@ A specification document can describe intent the code no longer implements.
 An answer drawn from a stale document arrives with a citation attached, which makes it *more* likely to be believed than an obviously uncertain answer, not less.
 Requiring the source to be named is what lets the user weigh it.
 
+### Setup is one command, and the main session gets a skill
+
+`annotatr init` registers both hooks in the project's `./.claude/settings.json` and copies the skills annotatr ships into `./.claude/skills/`.
+Both steps are idempotent and report what they changed.
+A shipped skill file that was edited locally is overwritten and reported, because the shipped copy is the one annotatr maintains; files that are not annotatr's are never touched.
+When the settings file cannot be parsed, the command reports it and stops before installing the skill, so a half-configured project is not left behind.
+
+Project scope is the default because the settings file travels with the repository and because the hook command embeds an absolute path to this checkout.
+`annotatr setup hooks` remains for the user-scope case.
+
+The skill exists because the main session is otherwise unaware of annotatr.
+Without it, the session cannot know that its final message is the document under review, may try to run the hook commands itself, and has no way to read a carried-back block as decisions rather than as new questions.
+The skill states those three things and lists the commands the user may ask for.
+Claude Code reads hooks at startup, so a session already open in the project must be restarted after `init`.
+
 ## Risks / Trade-offs
 
 - **A sub-agent confabulates intent it cannot know.** A fresh reader can explain what code does but not why a live conversation chose it. → Mandatory source declaration, with "no documented intent found" as a first-class answer rather than a failure.

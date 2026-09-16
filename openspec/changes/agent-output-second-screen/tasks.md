@@ -52,3 +52,9 @@
 - [x] 7.1 Add a test asserting no dispatch path can be constructed with a write-capable sandbox flag, since side questions must never edit files; verify the test fails if the flag is made configurable
 - [x] 7.2 Add a test asserting the ingest path never reads `transcript_path` to obtain the current turn's text; verify it fails if transcript parsing is reintroduced
 - [ ] 7.3 Run the full `check` pipeline (build if present, lint, typecheck, tests) and confirm it passes from a clean checkout
+
+## 8. Project setup (spec: a project is set up in one step)
+
+- [ ] 8.1 Implement `annotatr init`, which registers both hooks in `./.claude/settings.json` and installs the shipped skills into `./.claude/skills/`, reporting each change and stopping before the skills when the settings file cannot be parsed; verify tests cover a first run, a second run that changes nothing, a locally edited skill copy being restored, and foreign skill files being left alone
+- [ ] 8.2 Ship an `annotatr` skill that tells the main session its final message is the reviewed document, that the hooks run annotatr's commands, and how to treat a carried-back block; verify a test asserts every shipped skill's frontmatter name matches its directory
+- [ ] 8.3 Add an opt-in end-to-end test that runs `annotatr init` in a fresh project and then `claude -p` there; verify the turn reaches the store through the project-level hook without touching user configuration

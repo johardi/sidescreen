@@ -108,3 +108,21 @@ The return SHALL happen through a harness hook that injects the list as context 
 - **WHEN** the user asks questions but adds nothing to the carry-back list
 - **THEN** the next prompt receives no injected context
 - **AND** the main session's context is unchanged by the entire review
+
+### Requirement: A project is set up in one step
+
+The system SHALL provide a single command that registers every hook it needs in the project's Claude Code settings and installs the skill it ships into the project's skills directory.
+The command SHALL be idempotent, SHALL report each change it makes, and SHALL NOT modify files that are not its own.
+
+#### Scenario: Setting up a project
+
+- **WHEN** the user runs the setup command in a project directory
+- **THEN** the `Stop` and `UserPromptSubmit` hooks are registered in that project's settings file
+- **AND** the shipped skill is installed under that project's skills directory
+- **AND** running the command again reports no changes
+
+#### Scenario: A settings file that cannot be parsed
+
+- **WHEN** the project's settings file exists but is not valid JSON
+- **THEN** the command reports the problem and leaves the file untouched
+- **AND** it does not install the skill, so a half-configured project is not left behind

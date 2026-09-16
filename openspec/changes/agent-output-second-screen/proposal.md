@@ -13,6 +13,7 @@ A browser surface that receives agent output, lets the user point at any part of
 - Threads support drilling and branching. Every question forks the sub-agent session of the answer it continues, so a follow-up carries the thread's context forward, a branch from any earlier answer sees only what came before it, and sibling branches cannot pollute each other.
 - Every sub-agent answer declares its source (code, session transcript, OpenSpec document, or none). "No documented intent found" is a valid and expected answer.
 - A carry-back list accumulates the user's conclusions during the session. Only that list is returned to the main session, through a `UserPromptSubmit` hook whose stdout Claude Code injects as context.
+- `annotatr init` sets up the current project in one step: it registers both hooks in `./.claude/settings.json` and installs a shipped `annotatr` skill into `./.claude/skills/`, so the main session knows the surface exists, writes its final message as the document the user will review, and treats carried-back conclusions as decisions already made.
 
 ## Capabilities
 
@@ -33,6 +34,7 @@ External surfaces it depends on:
 
 - Claude Code hooks `Stop` and `UserPromptSubmit`. Harness-specific, and the only integration points. Other harnesses degrade to no ingestion rather than to broken ingestion.
 - A sub-agent CLI capable of non-interactive execution with a read-only sandbox and session resume/fork. `codex exec` satisfies all four today.
+- Claude Code project-level configuration: `./.claude/settings.json` for hooks and `./.claude/skills/` for skills, both read at session startup.
 
 ### Non-goals
 
