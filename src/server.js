@@ -13,14 +13,19 @@ import { basename, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { renderMarkdown } from './render-markdown.js';
-import { renderErrorPage, renderIndexPage, renderTurnPage } from './page.js';
-import { listTurns } from './turns.js';
+import { renderErrorPage, renderLandingPage, renderSidebar, renderWorkspacePage } from './page.js';
+import { listTurns, removeTurn, turnsForSession } from './turns.js';
+import { findProject, listProjects, projectId, projectPath, sessionPath, turnPath } from './projects.js';
+import { presentSidebar } from './sidebar.js';
 import { createThread, createExchange, latestForkable, listThreadsForTurn, validateAnchor } from './threads.js';
 import { isIngestHookRegistered } from './setup-hooks.js';
 import { addEntry, entriesFor, removeEntry } from './carry-back.js';
 import { STORE_FILE_NAME } from './store.js';
 
 /** @typedef {import('./types.js').Turn} Turn */
+/** @typedef {import('./types.js').State} State */
+/** @typedef {import('./projects.js').Project} Project */
+/** @typedef {import('./page.js').Scope} Scope */
 /** @typedef {import('./threads.js').Thread} Thread */
 /** @typedef {import('./threads.js').Exchange} Exchange */
 /** @typedef {import('./threads.js').Answer} Answer */
@@ -198,9 +203,25 @@ export class AnnotatrServer {
     /** @type {RegExpExecArray|null} */
     let match;
 
-    if (method === 'GET' && path === '/') return this.#index(res);
-    if (method === 'GET' && (match = /^\/turns\/([^/]+)$/.exec(path))) return this.#turnPage(res, decodeURIComponent(match[1]));
+    if (method === 'GET' && path === '/') return this.#landing(res);
+    if (method === 'GET' && (match = /^\/projects\/([^/]+)$/.exec(path))) {
+      return this.#workspace(res, path, { projectId: decodeURIComponent(match[1]), sessionId: null, promptId: null });
+    }
+    if (method === 'GET' && (match = /^\/projects\/([^/]+)\/sessions\/([^/]+)$/.exec(path))) {
+      return this.#workspace(res, path, { projectId: decodeURIComponent(match[1]), sessionId: decodeURIComponent(match[2]), promptId: null });
+    }
+    if (method === 'GET' && (match = /^\/projects\/([^/]+)\/sessions\/([^/]+)\/turns\/([^/]+)$/.exec(path))) {
+      return this.#workspace(res, path, {
+        projectId: decodeURIComponent(match[1]),
+        sessionId: decodeURIComponent(match[2]),
+        promptId: decodeURIComponent(match[3]),
+      });
+    }
+    if (method === 'GET' && (match = /^\/turns\/([^/]+)$/.exec(path))) return this.#legacyTurn(res, decodeURIComponent(match[1]));
     if (method === 'GET' && (match = /^\/assets\/([^/]+)$/.exec(path))) return this.#asset(res, match[1]);
+    if (method === 'GET' && path === '/api/projects') return this.#apiProjects(res);
+    if (method === 'GET' && (match = /^\/api\/projects\/([^/]+)$/.exec(path))) return this.#apiProject(res, decodeURIComponent(match[1]));
+    if (method === 'DELETE' && (match = /^\/api\/turns\/([^/]+)$/.exec(path))) return this.#apiRemoveTurn(req, res, decodeURIComponent(match[1]));
     if (method === 'GET' && path === '/api/turns') return this.#apiTurns(res);
     if (method === 'GET' && (match = /^\/api\/turns\/([^/]+)$/.exec(path))) return this.#apiTurn(res, decodeURIComponent(match[1]));
     if (method === 'POST' && (match = /^\/api\/turns\/([^/]+)\/threads$/.exec(path))) return this.#apiCreateThread(req, res, decodeURIComponent(match[1]));
@@ -219,33 +240,151 @@ export class AnnotatrServer {
   }
 
   /** @param {http.ServerResponse} res */
-  async #index(res) {
+  async #landing(res) {
     const state = await this.store.read();
-    sendHtml(res, 200, renderIndexPage({ turns: listTurns(state), ingestionAvailable: await this.#ingestionAvailable() }));
+    sendHtml(res, 200, renderLandingPage({ projects: listProjects(state) }));
   }
 
   /**
+   * One project, and within it whatever the address depth asks for: the
+   * project's newest turn, one session's newest turn, or one pinned turn.
+   * An address that names the wrong project or session for a turn that
+   * exists is sent to the turn's own address rather than refused.
+   *
    * @param {http.ServerResponse} res
-   * @param {string} promptId
+   * @param {string} requestPath
+   * @param {{ projectId: string, sessionId: string|null, promptId: string|null }} address
    */
-  async #turnPage(res, promptId) {
+  async #workspace(res, requestPath, address) {
     const state = await this.store.read();
-    const turn = state.turns[promptId];
-    if (!turn) {
-      sendHtml(res, 404, renderErrorPage('Turn not found', 'No turn with that id has been ingested.'));
+    const project = findProject(state, address.projectId, [this.cwd]);
+    if (!project) {
+      sendHtml(res, 404, renderErrorPage('Project not found', 'No project with that id has delivered a turn.'));
       return;
     }
+
+    /** @type {Turn|null} */
+    let turn;
+    /** @type {Scope} */
+    let scope = { kind: 'project' };
+    if (address.promptId !== null && address.sessionId !== null) {
+      turn = state.turns[address.promptId] ?? null;
+      if (!turn) {
+        sendHtml(res, 404, renderErrorPage('Turn not found', 'No turn with that id has been ingested, or it has been removed.'));
+        return;
+      }
+      const canonical = turnPath(projectId(turn.cwd), turn.sessionId, turn.promptId);
+      if (canonical !== requestPath) {
+        sendRedirect(res, canonical);
+        return;
+      }
+      scope = { kind: 'turn', sessionId: turn.sessionId, promptId: turn.promptId };
+    } else if (address.sessionId !== null) {
+      const session = state.sessions[address.sessionId];
+      if (!session) {
+        sendHtml(res, 404, renderErrorPage('Session not found', 'No session with that id has delivered a turn, or all of its turns have been removed.'));
+        return;
+      }
+      const canonical = sessionPath(projectId(session.cwd), session.sessionId);
+      if (canonical !== requestPath) {
+        sendRedirect(res, canonical);
+        return;
+      }
+      turn = turnsForSession(state, session.sessionId)[0] ?? null;
+      scope = { kind: 'session', sessionId: session.sessionId };
+    } else {
+      turn = listTurns(state).find((candidate) => candidate.cwd === project.cwd) ?? null;
+    }
+
     sendHtml(
       res,
       200,
-      renderTurnPage({
+      renderWorkspacePage({
+        project,
+        scope,
         turn,
-        documentHtml: renderMarkdown(turn.message),
-        threads: listThreadsForTurn(state, promptId).map(presentThread),
-        carryBack: state.carryBack[turn.sessionId] ?? [],
-        ingestionAvailable: await this.#ingestionAvailable(),
+        documentHtml: turn ? renderMarkdown(turn.message) : '',
+        threads: turn ? listThreadsForTurn(state, turn.promptId).map(presentThread) : [],
+        carryBack: turn ? state.carryBack[turn.sessionId] ?? [] : [],
+        sidebar: presentSidebar(state, project),
+        ingestionAvailable: await this.#ingestionAvailable(project.cwd),
       }),
     );
+  }
+
+  /**
+   * The address turns had before projects and sessions existed.
+   *
+   * @param {http.ServerResponse} res
+   * @param {string} promptId
+   */
+  async #legacyTurn(res, promptId) {
+    const state = await this.store.read();
+    const turn = state.turns[promptId];
+    if (!turn) {
+      sendHtml(res, 404, renderErrorPage('Turn not found', 'No turn with that id has been ingested, or it has been removed.'));
+      return;
+    }
+    sendRedirect(res, turnPath(projectId(turn.cwd), turn.sessionId, turn.promptId));
+  }
+
+  /** @param {http.ServerResponse} res */
+  async #apiProjects(res) {
+    const state = await this.store.read();
+    sendJson(res, 200, { projects: listProjects(state) });
+  }
+
+  /**
+   * The sidebar's data for one project, plus its rendered markup so the
+   * client swaps rather than rebuilds it.
+   *
+   * @param {http.ServerResponse} res
+   * @param {string} id
+   */
+  async #apiProject(res, id) {
+    const state = await this.store.read();
+    const project = findProject(state, id, [this.cwd]);
+    if (!project) {
+      sendJson(res, 404, { error: 'Project not found' });
+      return;
+    }
+    const sidebar = presentSidebar(state, project);
+    sendJson(res, 200, {
+      ...sidebar,
+      sidebarHtml: renderSidebar({ sidebar, scope: null, activePromptId: null }),
+      ingestionAvailable: await this.#ingestionAvailable(project.cwd),
+    });
+  }
+
+  /**
+   * Remove a turn and the threads anchored in it. Carry-back stays. The
+   * response says where the page should go if it was showing that turn:
+   * the project's follow address, or the landing page once the project has
+   * no turn left to show.
+   *
+   * @param {http.IncomingMessage} req
+   * @param {http.ServerResponse} res
+   * @param {string} promptId
+   */
+  async #apiRemoveTurn(req, res, promptId) {
+    if (!this.#assertSameOrigin(req, res)) return;
+    /** @type {import('./turns.js').RemovedTurn|null} */
+    let removed = null;
+    const state = await this.store.update((latest) => {
+      removed = removeTurn(latest, promptId);
+    });
+    if (removed === null) {
+      sendJson(res, 404, { error: 'Turn not found' });
+      return;
+    }
+    const { turn, removedThreads, sessionRemoved } = /** @type {import('./turns.js').RemovedTurn} */ (removed);
+    const id = projectId(turn.cwd);
+    const projectRemains = findProject(state, id, [this.cwd]) !== null;
+    this.broadcast({ type: 'turn-removed', promptId, sessionId: turn.sessionId, projectId: id, removedThreads, sessionRemoved });
+    sendJson(res, 200, {
+      removed: { promptId, sessionId: turn.sessionId, projectId: id, removedThreads, sessionRemoved },
+      next: projectRemains ? projectPath(id) : '/',
+    });
   }
 
   /**
@@ -637,8 +776,13 @@ export class AnnotatrServer {
     return true;
   }
 
-  async #ingestionAvailable() {
-    return isIngestHookRegistered({ env: this.env, cwd: this.cwd });
+  /**
+   * Whether the settings that apply to a project directory register the ingest hook.
+   *
+   * @param {string} cwd
+   */
+  async #ingestionAvailable(cwd) {
+    return isIngestHookRegistered({ env: this.env, cwd });
   }
 }
 
@@ -673,6 +817,15 @@ export function createServer(options) {
 function sendText(res, status, text) {
   res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8' });
   res.end(text);
+}
+
+/**
+ * @param {http.ServerResponse} res
+ * @param {string} location
+ */
+function sendRedirect(res, location) {
+  res.writeHead(302, { Location: location, 'Content-Type': 'text/plain; charset=utf-8' });
+  res.end(`See ${location}`);
 }
 
 /**

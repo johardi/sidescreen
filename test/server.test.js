@@ -7,7 +7,8 @@ import { preview } from '../src/page.js';
 import { createCodexDispatch, READ_ONLY_CONFIG } from '../src/dispatch.js';
 import { Store } from '../src/store.js';
 import { FIXTURES, tempDir } from './helpers.js';
-import { rawRequest, sampleTurn, startServer, waitForAnswer } from './server-helpers.js';
+import { rawRequest, sampleTurn, startServer, turnHref, waitForAnswer } from './server-helpers.js';
+import { projectId } from '../src/projects.js';
 
 test('isAllowedHost accepts loopback hostnames on the bound port only', () => {
   assert.ok(isAllowedHost('127.0.0.1:7486', 7486));
@@ -27,10 +28,11 @@ test('isAllowedHost accepts loopback hostnames on the bound port only', () => {
 
 test('an allowed Host is served', async (t) => {
   const { port } = await startServer(t);
-  const viaIp = await rawRequest({ port, path: '/turns/prompt-1' });
+  const path = turnHref(sampleTurn());
+  const viaIp = await rawRequest({ port, path });
   assert.equal(viaIp.status, 200);
   assert.match(viaIp.body, /The quick brown fox/);
-  const viaLocalhost = await rawRequest({ port, path: '/turns/prompt-1', host: `localhost:${port}` });
+  const viaLocalhost = await rawRequest({ port, path, host: `localhost:${port}` });
   assert.equal(viaLocalhost.status, 200);
 });
 
@@ -57,32 +59,204 @@ test('the server binds to loopback only', async (t) => {
   assert.equal(address.address, '127.0.0.1');
 });
 
-test('one page per turn: the turn page renders the message and 404s for unknown ids', async (t) => {
+test('one page per turn: the pinned address renders that turn only, and unknown ids answer 404', async (t) => {
   const second = sampleTurn({ promptId: 'prompt-2', message: 'Second turn here.' });
   const { url } = await startServer(t, { turns: [sampleTurn(), second] });
 
-  const page = await fetch(new URL('/turns/prompt-2', url));
+  const page = await fetch(new URL(turnHref(second), url));
   assert.equal(page.status, 200);
   const html = await page.text();
   assert.match(html, /<article id="document" class="document">\s*<p>Second turn here\.<\/p>/);
-  assert.doesNotMatch(html, /quick brown fox/);
+  const article = /<article id="document" class="document">([\s\S]*?)<\/article>/.exec(html)?.[1] ?? '';
+  assert.doesNotMatch(article, /quick brown fox/, 'the other turn is in the sidebar, not in the document');
   assert.match(html, /<script id="turn-data" type="application\/json">/);
+  assert.match(html, /<script id="workspace-data" type="application\/json">/);
+  assert.match(html, /data-scope="turn"/);
   assert.match(page.headers.get('content-security-policy') ?? '', /default-src 'self'/);
 
-  const missing = await fetch(new URL('/turns/nope', url));
+  const project = projectId(second.cwd);
+  const missing = await fetch(new URL(`/projects/${project}/sessions/session-1/turns/nope`, url));
+  assert.equal(missing.status, 404);
+  assert.match(await missing.text(), /href="\/">All projects/);
+  assert.equal((await fetch(new URL(`/projects/${project}/sessions/nope`, url))).status, 404);
+  assert.equal((await fetch(new URL('/projects/nope', url))).status, 404);
+  assert.equal((await fetch(new URL('/turns/nope', url))).status, 404);
+});
+
+test('the former turn address, and any address naming the wrong project or session, redirect to the pinned address', async (t) => {
+  const turn = sampleTurn();
+  const other = sampleTurn({ promptId: 'elsewhere', sessionId: 'session-9', cwd: '/Users/example/other' });
+  const { url, port } = await startServer(t, { turns: [turn, other] });
+  const canonical = turnHref(turn);
+
+  const legacy = await rawRequest({ port, path: '/turns/prompt-1' });
+  assert.equal(legacy.status, 302);
+  assert.equal(legacy.headers.location, canonical);
+
+  const wrongProject = await rawRequest({ port, path: `/projects/${projectId(other.cwd)}/sessions/session-1/turns/prompt-1` });
+  assert.equal(wrongProject.status, 302);
+  assert.equal(wrongProject.headers.location, canonical);
+
+  const wrongSession = await rawRequest({ port, path: `/projects/${projectId(turn.cwd)}/sessions/session-9/turns/prompt-1` });
+  assert.equal(wrongSession.status, 302);
+  assert.equal(wrongSession.headers.location, canonical);
+
+  const sessionUnderWrongProject = await rawRequest({ port, path: `/projects/${projectId(other.cwd)}/sessions/session-1` });
+  assert.equal(sessionUnderWrongProject.status, 302);
+  assert.equal(sessionUnderWrongProject.headers.location, `/projects/${projectId(turn.cwd)}/sessions/session-1`);
+
+  const followed = await fetch(new URL('/turns/prompt-1', url));
+  assert.equal(followed.status, 200);
+  assert.match(await followed.text(), /The quick brown fox/);
+});
+
+test('the project and session addresses show the newest turn in their scope and say what they follow', async (t) => {
+  const olderA = sampleTurn({ promptId: 'a-old', sessionId: 'sess-a', receivedAt: '2026-01-01T00:00:00.000Z', message: 'Older in A' });
+  const newerA = sampleTurn({ promptId: 'a-new', sessionId: 'sess-a', receivedAt: '2026-01-03T00:00:00.000Z', message: 'Newer in A' });
+  const onlyB = sampleTurn({ promptId: 'b-only', sessionId: 'sess-b', receivedAt: '2026-01-02T00:00:00.000Z', message: 'Only in B' });
+  const { url } = await startServer(t, { turns: [olderA, newerA, onlyB] });
+  const project = projectId(olderA.cwd);
+
+  const projectPage = await (await fetch(new URL(`/projects/${project}`, url))).text();
+  assert.match(projectPage, /<p>Newer in A<\/p>/, 'the project address shows the newest turn of any session');
+  assert.match(projectPage, /data-scope="project"/);
+  assert.match(projectPage, /class="sidebar-latest" href="\/projects\/[0-9a-f]{12}" aria-current="page"/);
+
+  const sessionPage = await (await fetch(new URL(`/projects/${project}/sessions/sess-b`, url))).text();
+  assert.match(sessionPage, /<p>Only in B<\/p>/, 'the session address shows that session\'s newest turn');
+  assert.match(sessionPage, /data-scope="session"/);
+});
+
+test('the landing page lists projects newest first with name, path, and session count, and is empty without turns', async (t) => {
+  const alpha = sampleTurn({ promptId: 'p-alpha', sessionId: 'sess-alpha', cwd: '/w/alpha', receivedAt: '2026-01-01T00:00:00.000Z' });
+  const beta1 = sampleTurn({ promptId: 'p-beta-1', sessionId: 'sess-beta-1', cwd: '/w/beta', receivedAt: '2026-01-02T00:00:00.000Z' });
+  const beta2 = sampleTurn({ promptId: 'p-beta-2', sessionId: 'sess-beta-2', cwd: '/w/beta', receivedAt: '2026-01-03T00:00:00.000Z' });
+  const { url } = await startServer(t, { turns: [alpha, beta1, beta2] });
+  const html = await (await fetch(url)).text();
+  assert.ok(html.indexOf('/w/beta') < html.indexOf('/w/alpha'), 'the project with the newer turn comes first');
+  assert.match(html, /class="project-name">beta<\/span>/);
+  assert.match(html, /class="project-path">\/w\/beta<\/span>/);
+  assert.match(html, /class="project-sessions">2 sessions<\/span>/);
+  assert.match(html, /class="project-sessions">1 session<\/span>/);
+  assert.doesNotMatch(html, /quick brown fox/, 'no turn text on the landing page');
+  const api = await (await fetch(new URL('/api/projects', url))).json();
+  assert.deepEqual(api.projects.map((/** @type {{ cwd: string, sessionCount: number }} */ project) => [project.cwd, project.sessionCount]), [['/w/beta', 2], ['/w/alpha', 1]]);
+
+  const { url: emptyUrl } = await startServer(t, { turns: [] });
+  const emptyHtml = await (await fetch(emptyUrl)).text();
+  assert.match(emptyHtml, /No project has delivered a turn yet/);
+  assert.doesNotMatch(emptyHtml, /class="project-link"/);
+});
+
+test('the sidebar keeps two concurrent sessions apart, orders them by latest turn, and the project endpoint carries the same data', async (t) => {
+  const turns = [
+    sampleTurn({ promptId: 'a1', sessionId: 'sess-a', receivedAt: '2026-01-01T00:00:00.000Z', message: 'A one' }),
+    sampleTurn({ promptId: 'b1', sessionId: 'sess-b', receivedAt: '2026-01-01T00:30:00.000Z', message: 'B one' }),
+    sampleTurn({ promptId: 'a2', sessionId: 'sess-a', receivedAt: '2026-01-01T01:00:00.000Z', message: 'A two' }),
+    sampleTurn({ promptId: 'b2', sessionId: 'sess-b', receivedAt: '2026-01-01T01:30:00.000Z', message: 'B two' }),
+    sampleTurn({ promptId: 'elsewhere', sessionId: 'sess-x', cwd: '/Users/example/other', receivedAt: '2026-01-02T00:00:00.000Z', message: 'Other project' }),
+  ];
+  const { url } = await startServer(t, { turns });
+  const project = projectId(turns[0].cwd);
+  const data = await (await fetch(new URL(`/api/projects/${project}`, url))).json();
+  assert.deepEqual(
+    data.sessions.map((/** @type {{ sessionId: string, turns: { promptId: string }[], latestPromptId: string }} */ session) => [session.sessionId, session.turns.map((turn) => turn.promptId), session.latestPromptId]),
+    [
+      ['sess-b', ['b2', 'b1'], 'b2'],
+      ['sess-a', ['a2', 'a1'], 'a2'],
+    ],
+    'two sessions, each with its own turns newest first, the session with the newer turn first',
+  );
+  assert.equal(data.latestPromptId, 'b2');
+  assert.equal(data.project.cwd, turns[0].cwd);
+  assert.doesNotMatch(data.sidebarHtml, /Other project/, 'the other project does not appear');
+  assert.match(data.sidebarHtml, /class="turn-preview">B two</);
+  assert.equal(data.sessions[0].title, null);
+  assert.equal(typeof data.sessions[0].label, 'string');
+  assert.equal(data.sessions[0].turns[0].threadCount, 0);
+
+  const missing = await fetch(new URL('/api/projects/nope', url));
   assert.equal(missing.status, 404);
 });
 
-test('the index lists turns newest first and says when ingestion is unavailable', async (t) => {
-  const older = sampleTurn({ promptId: 'old', receivedAt: '2026-01-01T00:00:00.000Z', message: 'Older turn' });
-  const newer = sampleTurn({ promptId: 'new', receivedAt: '2026-02-01T00:00:00.000Z', message: 'Newer turn' });
-  const { url } = await startServer(t, { turns: [older, newer] });
-  const html = await (await fetch(url)).text();
-  assert.ok(html.indexOf('Newer turn') < html.indexOf('Older turn'));
-  assert.match(html, /ingestion unavailable/);
+test('DELETE removes a turn and its threads behind the same-origin check, and says where the page goes next', async (t) => {
+  const turns = [sampleTurn(), sampleTurn({ promptId: 'prompt-2', receivedAt: '2026-01-02T00:00:00.000Z' })];
+  const { url, port, store } = await startServer(t, {
+    turns,
+    dispatch: async () => ({ ok: true, answer: { text: 'a', source: 'none', sourceDetail: '' }, subAgentSessionId: null }),
+  });
+  const project = projectId(turns[0].cwd);
+  const anchor = { start: { path: [0], offset: 0 }, end: { path: [0], offset: 3 }, text: 'The' };
+  for (const question of ['one', 'two']) {
+    const created = await fetch(new URL('/api/turns/prompt-1/threads', url), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ anchor, selectedText: 'The', question }),
+    });
+    assert.equal(created.status, 201);
+  }
+  await fetch(new URL('/api/sessions/session-1/carry-back', url), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: 'Keep this.' }),
+  });
 
-  const api = await (await fetch(new URL('/api/turns', url))).json();
-  assert.deepEqual(api.turns.map((/** @type {{ promptId: string }} */ turn) => turn.promptId), ['new', 'old']);
+  assert.equal((await rawRequest({ port, path: '/api/turns/prompt-1', method: 'DELETE', headers: { Origin: 'https://evil.example' } })).status, 403);
+  assert.equal((await rawRequest({ port, path: '/api/turns/prompt-1', method: 'DELETE', headers: { 'Sec-Fetch-Site': 'cross-site' } })).status, 403);
+  assert.equal((await fetch(new URL('/api/turns/nope', url), { method: 'DELETE' })).status, 404);
+
+  const removed = await fetch(new URL('/api/turns/prompt-1', url), { method: 'DELETE' });
+  assert.equal(removed.status, 200);
+  const body = await removed.json();
+  assert.deepEqual(body.removed, { promptId: 'prompt-1', sessionId: 'session-1', projectId: project, removedThreads: 2, sessionRemoved: false });
+  assert.equal(body.next, `/projects/${project}`);
+  let state = await store.read();
+  assert.equal(state.turns['prompt-1'], undefined);
+  assert.deepEqual(Object.keys(state.threads), []);
+  assert.equal(state.carryBack['session-1'].length, 1, 'carry-back survives');
+  assert.equal((await fetch(new URL(turnHref(turns[0]), url))).status, 404, 'the removed turn\'s address answers not found');
+
+  const last = await (await fetch(new URL('/api/turns/prompt-2', url), { method: 'DELETE' })).json();
+  assert.equal(last.removed.sessionRemoved, true);
+  assert.equal(last.next, '/', 'with no turn left in the project, the landing page is next');
+  state = await store.read();
+  assert.equal(state.sessions['session-1'], undefined);
+  assert.equal(state.carryBack['session-1'].length, 1);
+});
+
+test('the ingestion warning is about the selected project, not the directory the server started in', async (t) => {
+  const { writeFile, mkdir } = await import('node:fs/promises');
+  const project = await tempDir(t, 'annotatr-hooked-');
+  await mkdir(join(project, '.claude'), { recursive: true });
+  await writeFile(
+    join(project, '.claude', 'settings.json'),
+    JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'node /x/bin/annotatr.js ingest' }] }] } }),
+    'utf8',
+  );
+  const hooked = sampleTurn({ promptId: 'hooked', sessionId: 'sess-hooked', cwd: project, message: 'Hooked project' });
+  const bare = sampleTurn({ promptId: 'bare', sessionId: 'sess-bare', cwd: '/Users/example/bare', message: 'Bare project' });
+  const { url, stateDir } = await startServer(t, { turns: [hooked, bare] });
+  assert.notEqual(stateDir, project, 'the server was started somewhere else');
+
+  const hookedPage = await (await fetch(new URL(`/projects/${projectId(project)}`, url))).text();
+  assert.doesNotMatch(hookedPage, /ingestion unavailable/);
+  const barePage = await (await fetch(new URL(`/projects/${projectId('/Users/example/bare')}`, url))).text();
+  assert.match(barePage, /ingestion unavailable for bare/);
+  const api = await (await fetch(new URL(`/api/projects/${projectId(project)}`, url))).json();
+  assert.equal(api.ingestionAvailable, true);
+});
+
+test('the server\'s own directory is a project before it has delivered a turn, shown as an empty workspace', async (t) => {
+  const { url, stateDir } = await startServer(t, { turns: [] });
+  const page = await fetch(new URL(`/projects/${projectId(stateDir)}`, url));
+  assert.equal(page.status, 200);
+  const html = await page.text();
+  assert.match(html, /No turns yet from/);
+  assert.match(html, /class="sidebar-empty"/);
+  assert.doesNotMatch(html, /id="turn-data"/, 'no document, so no document script');
+  assert.match(html, /id="workspace-data"/, 'but the sidebar script is there to fill in on the first turn');
+  const landing = await (await fetch(url)).text();
+  assert.doesNotMatch(landing, /class="project-link"/, 'the landing page lists only projects that have delivered a turn');
 });
 
 test('assets are served from the public directory only', async (t) => {

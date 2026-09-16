@@ -5,6 +5,7 @@
 import { describeRange, resolveAnchor } from './anchor.js';
 import { clearMarks, wrapRange } from './marks.js';
 import { familyOf, rootOf, rootThreads } from './thread-tree.js';
+import { events } from './events.js';
 
 /** @typedef {import('../threads.js').Exchange & { answerHtml: string|null }} PresentedExchange */
 /** @typedef {Omit<import('../threads.js').Thread, 'exchanges'> & { exchanges: PresentedExchange[], detached?: boolean }} PresentedThread */
@@ -577,7 +578,6 @@ function schedulePoll() {
   state.pollTimer = setTimeout(refresh, 3_000);
 }
 
-const events = new EventSource('/api/events');
 for (const type of ['thread-created', 'thread-updated', 'carry-back-updated', 'store-changed']) {
   events.addEventListener(type, () => {
     refresh();

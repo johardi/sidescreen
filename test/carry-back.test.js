@@ -5,7 +5,7 @@ import { emptyState, Store } from '../src/store.js';
 import { EMISSION_HEADER, addEntry, emitCarryBack, formatEmission, pendingEntries, removeEntry } from '../src/carry-back.js';
 import { HookPayloadError, parseUserPromptSubmitPayload } from '../src/hook-payload.js';
 import { tempDir } from './helpers.js';
-import { rawRequest, sampleTurn, startServer } from './server-helpers.js';
+import { rawRequest, sampleTurn, startServer, turnHref } from './server-helpers.js';
 
 /** A writable that collects what is written to it. */
 function sink() {
@@ -93,7 +93,7 @@ test('the API adds, lists, and removes entries for a session, and the turn page 
   const listed = await (await fetch(base)).json();
   assert.deepEqual(listed.entries.map((/** @type {{ text: string }} */ e) => e.text), ['Keep the directory lock.']);
 
-  const page = await (await fetch(new URL('/turns/prompt-1', url))).text();
+  const page = await (await fetch(new URL(turnHref(sampleTurn()), url))).text();
   assert.match(page, /"carryBack":\[\{"id":/);
   assert.match(page, /<section class="carry-back" id="carry-back"/);
 

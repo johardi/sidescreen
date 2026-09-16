@@ -7,6 +7,7 @@ import { init } from './init.js';
 import { defaultSettingsPath, projectSettingsPath, setupHooks } from './setup-hooks.js';
 import { Store, defaultStateDir } from './store.js';
 import { DEFAULT_PORT, createServer } from './server.js';
+import { projectId, projectPath } from './projects.js';
 import { createCodexDispatch, dispatchSettings } from './dispatch.js';
 
 /**
@@ -34,7 +35,7 @@ Usage:
       --dry-run                             Report what would change without writing
   annotatr serve [options]                Start the browser surface on loopback
       --port <n>                            Port to listen on (default: 7486)
-      --open                                Open the surface in the default browser
+      --open                                Open this directory's project in the default browser
   annotatr --version                      Print the version
   annotatr --help                         Print this help
 
@@ -150,18 +151,32 @@ async function serve(argv, io) {
     return 1;
   }
 
+  const cwd = process.cwd();
   const store = new Store(defaultStateDir(io.env));
   const server = createServer({
     store,
     dispatch: createCodexDispatch({ env: io.env }),
     env: io.env,
+    cwd,
     log: (message) => io.stderr.write(`${message}\n`),
   });
-  const url = await server.listen({ port });
+  /** @type {string} */
+  let url;
+  try {
+    url = await server.listen({ port });
+  } catch (error) {
+    if (/** @type {NodeJS.ErrnoException} */ (error).code !== 'EADDRINUSE') throw error;
+    io.stderr.write(
+      `annotatr serve: 127.0.0.1:${port} is already in use. Another annotatr may be running there: open http://127.0.0.1:${port}/ instead, or choose another port with --port.\n`,
+    );
+    return 1;
+  }
   const settings = dispatchSettings(io.env);
+  const project = projectUrl(url, cwd);
   io.stdout.write(`annotatr listening on ${url}\n`);
+  io.stdout.write(`this project: ${project} (${cwd})\n`);
   io.stdout.write(`sub-agent: ${settings.codexBin} (read-only, ${Math.round(settings.timeoutMs / 1000)}s timeout${settings.model ? `, model ${settings.model}` : ''})\n`);
-  if (options.open === true) openInBrowser(url);
+  if (options.open === true) openInBrowser(project);
 
   await new Promise((resolve) => {
     const stop = () => {
@@ -172,6 +187,16 @@ async function serve(argv, io) {
     process.once('SIGTERM', stop);
   });
   return 0;
+}
+
+/**
+ * The workspace address of a directory's project on a running server.
+ *
+ * @param {string} baseUrl
+ * @param {string} cwd
+ */
+export function projectUrl(baseUrl, cwd) {
+  return new URL(projectPath(projectId(cwd)), baseUrl).href;
 }
 
 /** @param {string} url */

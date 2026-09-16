@@ -40,6 +40,6 @@ When nothing was carried back, nothing is injected.
 
 | Ask | Command |
 | --- | --- |
-| Open the review surface | `annotatr serve --open`, run in the background. It serves http://127.0.0.1:7486/ until stopped. |
+| Open the review surface | `annotatr serve --open`, run in the background. It serves http://127.0.0.1:7486/ until stopped and opens this project's page. If it reports the port is already in use, a server is already running: open http://127.0.0.1:7486/ instead. |
 | Turns are not appearing | `annotatr init` re-registers the hook in `./.claude/settings.json`. Claude Code reads hooks at startup, so restart it afterwards. |
 | Check whether the hook is registered | `annotatr setup hooks --project --dry-run` prints `Stop: unchanged` when it is. |
