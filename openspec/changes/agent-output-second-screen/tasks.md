@@ -33,15 +33,15 @@
 
 ## 5. Threads and branching (spec: threads support drilling and branching)
 
-- [ ] 5.1 Persist each answered exchange's sub-agent session id, since every answer keeps its own immutable session; verify a test asserts the id is recorded per exchange and survives a store reload
-- [ ] 5.2 Implement a follow-up as `codex exec fork` of the session of the answer it continues, appended to the same thread; verify a test asserts the fork subcommand and that session id are used rather than a cold invocation, and that the continued answer's session id is unchanged afterwards
-- [ ] 5.3 Implement a branch as the same fork into a new thread, allowed from any answered exchange including one that already has a follow-up; verify a test asserts the branch forks that exchange's session id rather than the thread's latest, that the two threads hold different session ids, and that answering one does not mutate the other
-- [ ] 5.4 Allow concurrent follow-up and branch dispatches, safe because read-only answers cannot write and answered sessions are never mutated; verify a test fires two branches at once and both answers land on their own threads
-- [ ] 5.5 Render sibling branches as tabs within the thread column, never as a graph; verify the tab strip stays usable with five siblings at 400px width
+- [x] 5.1 Persist each answered exchange's sub-agent session id, since every answer keeps its own immutable session; verify a test asserts the id is recorded per exchange and survives a store reload
+- [x] 5.2 Implement a follow-up as `codex exec fork` of the session of the answer it continues, appended to the same thread; verify a test asserts the fork subcommand and that session id are used rather than a cold invocation, and that the continued answer's session id is unchanged afterwards
+- [x] 5.3 Implement a branch as the same fork into a new thread, allowed from any answered exchange including one that already has a follow-up; verify a test asserts the branch forks that exchange's session id rather than the thread's latest, that the two threads hold different session ids, and that answering one does not mutate the other
+- [x] 5.4 Allow concurrent follow-up and branch dispatches, safe because read-only answers cannot write and answered sessions are never mutated; verify a test fires two branches at once and both answers land on their own threads
+- [x] 5.5 Render sibling branches as tabs within the thread column, never as a graph; verify the tab strip stays usable with five siblings at 400px width
 
 ## 6. Carry-back return path (spec: only chosen conclusions return to the main session)
 
-- [ ] 6.1 Implement a carry-back list the user adds entries to during a review, stored per session; verify entries survive a page reload
+- [x] 6.1 Implement a carry-back list the user adds entries to during a review, stored per session; verify entries survive a page reload
 - [ ] 6.2 Implement `annotatr carry-back --emit` printing only the pending entries as plain text, and nothing when the list is empty; verify tests cover a populated list and an empty one
 - [ ] 6.3 Register a `UserPromptSubmit` hook through `annotatr setup hooks` that runs that command, so its stdout is injected as context on the next prompt; verify running setup twice produces one entry per event
 - [ ] 6.4 Clear emitted entries after a successful emit so a conclusion is not injected into every later prompt; verify a test asserts the second emit prints nothing
