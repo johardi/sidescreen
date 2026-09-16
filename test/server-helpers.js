@@ -28,10 +28,10 @@ export function sampleTurn(overrides = {}) {
  * Start a server on an ephemeral port with a fresh store, torn down after the test.
  *
  * @param {import('node:test').TestContext} t
- * @param {{ dispatch?: import('../src/server.js').Dispatch, turns?: import('../src/types.js').Turn[], env?: NodeJS.ProcessEnv }} [options]
+ * @param {{ dispatch?: import('../src/server.js').Dispatch, turns?: import('../src/types.js').Turn[], env?: NodeJS.ProcessEnv, stateDir?: string }} [options]
  */
-export async function startServer(t, { dispatch, turns = [sampleTurn()], env = { HOME: '/nonexistent' } } = {}) {
-  const stateDir = await tempDir(t, 'annotatr-server-');
+export async function startServer(t, { dispatch, turns = [sampleTurn()], env = { HOME: '/nonexistent' }, stateDir: givenStateDir } = {}) {
+  const stateDir = givenStateDir ?? (await tempDir(t, 'annotatr-server-'));
   const store = new Store(stateDir);
   await store.update((state) => {
     for (const turn of turns) state.turns[turn.promptId] = turn;

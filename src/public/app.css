@@ -373,3 +373,59 @@ button:disabled { opacity: 0.6; cursor: default; }
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .form-error { margin: 0; color: var(--danger); font-size: 13px; }
 
+/* Carry back: the only thing that reaches the terminal */
+
+.carry-back {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--line);
+  background: var(--bg-muted);
+  padding: 14px 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.carry-back-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+}
+.carry-back-title { margin: 0; font-size: 14px; letter-spacing: 0.02em; text-transform: uppercase; }
+.carry-back-count {
+  font-size: 12px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+.carry-back-hint { font-size: 12px; color: var(--fg-muted); }
+.carry-back-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.carry-back-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.carry-back-entry[data-state="sent"] { color: var(--fg-muted); border-style: dashed; }
+.carry-back-entry-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.carry-back-remove { font-size: 12px; padding: 2px 8px; color: var(--fg-muted); }
+.carry-back-remove:hover { color: var(--danger); border-color: var(--danger); }
+.carry-back-sent { font-size: 12px; color: var(--ok); }
+.carry-back-form { display: flex; flex-direction: column; gap: 6px; max-width: 76ch; }
+.carry-back-text {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.carry-button { font-size: 12px; padding: 2px 10px; color: var(--fg-muted); }
+.carry-button:hover { color: var(--fg); border-color: var(--accent); }
+.exchange-actions { gap: 6px; }

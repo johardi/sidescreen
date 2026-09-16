@@ -17,6 +17,7 @@ import { renderErrorPage, renderIndexPage, renderTurnPage } from './page.js';
 import { listTurns } from './turns.js';
 import { createThread, createExchange, latestForkable, listThreadsForTurn, validateAnchor } from './threads.js';
 import { isIngestHookRegistered } from './setup-hooks.js';
+import { addEntry, entriesFor, removeEntry } from './carry-back.js';
 import { STORE_FILE_NAME } from './store.js';
 
 /** @typedef {import('./types.js').Turn} Turn */
@@ -206,6 +207,11 @@ export class AnnotatrServer {
     if (method === 'GET' && (match = /^\/api\/threads\/([^/]+)$/.exec(path))) return this.#apiThread(res, decodeURIComponent(match[1]));
     if (method === 'POST' && (match = /^\/api\/threads\/([^/]+)\/exchanges$/.exec(path))) return this.#apiFollowUp(req, res, decodeURIComponent(match[1]));
     if (method === 'POST' && (match = /^\/api\/threads\/([^/]+)\/branches$/.exec(path))) return this.#apiBranch(req, res, decodeURIComponent(match[1]));
+    if (method === 'GET' && (match = /^\/api\/sessions\/([^/]+)\/carry-back$/.exec(path))) return this.#apiCarryBack(res, decodeURIComponent(match[1]));
+    if (method === 'POST' && (match = /^\/api\/sessions\/([^/]+)\/carry-back$/.exec(path))) return this.#apiAddCarryBack(req, res, decodeURIComponent(match[1]));
+    if (method === 'DELETE' && (match = /^\/api\/sessions\/([^/]+)\/carry-back\/([^/]+)$/.exec(path))) {
+      return this.#apiRemoveCarryBack(req, res, decodeURIComponent(match[1]), decodeURIComponent(match[2]));
+    }
     if (method === 'GET' && path === '/api/events') return this.#events(req, res);
 
     if (path.startsWith('/api/')) sendJson(res, 404, { error: 'Not found' });
@@ -236,6 +242,7 @@ export class AnnotatrServer {
         turn,
         documentHtml: renderMarkdown(turn.message),
         threads: listThreadsForTurn(state, promptId).map(presentThread),
+        carryBack: state.carryBack[turn.sessionId] ?? [],
         ingestionAvailable: await this.#ingestionAvailable(),
       }),
     );
@@ -285,6 +292,7 @@ export class AnnotatrServer {
       turn,
       documentHtml: renderMarkdown(turn.message),
       threads: listThreadsForTurn(state, promptId).map(presentThread),
+      carryBack: state.carryBack[turn.sessionId] ?? [],
     });
   }
 
@@ -496,6 +504,58 @@ export class AnnotatrServer {
   }
 
   /**
+   * @param {http.ServerResponse} res
+   * @param {string} sessionId
+   */
+  async #apiCarryBack(res, sessionId) {
+    const state = await this.store.read();
+    sendJson(res, 200, { entries: state.carryBack[sessionId] ?? [] });
+  }
+
+  /**
+   * @param {http.IncomingMessage} req
+   * @param {http.ServerResponse} res
+   * @param {string} sessionId
+   */
+  async #apiAddCarryBack(req, res, sessionId) {
+    const body = await this.#readJsonBody(req, res);
+    if (body === null) return;
+    const text = typeof body.text === 'string' ? body.text.trim() : '';
+    const threadId = typeof body.threadId === 'string' ? body.threadId : null;
+    if (text === '') {
+      sendJson(res, 400, { error: 'Expected { text }' });
+      return;
+    }
+    /** @type {import('./carry-back.js').CarryBackEntry|null} */
+    let entry = null;
+    const state = await this.store.update((latest) => {
+      entry = addEntry(latest, { sessionId, text, threadId });
+    });
+    this.broadcast({ type: 'carry-back-updated', sessionId });
+    sendJson(res, 201, { entry, entries: state.carryBack[sessionId] ?? [] });
+  }
+
+  /**
+   * @param {http.IncomingMessage} req
+   * @param {http.ServerResponse} res
+   * @param {string} sessionId
+   * @param {string} entryId
+   */
+  async #apiRemoveCarryBack(req, res, sessionId, entryId) {
+    if (!this.#assertSameOrigin(req, res)) return;
+    let removed = false;
+    const state = await this.store.update((latest) => {
+      removed = removeEntry(latest, sessionId, entryId);
+    });
+    if (!removed) {
+      sendJson(res, 404, { error: 'Entry not found' });
+      return;
+    }
+    this.broadcast({ type: 'carry-back-updated', sessionId });
+    sendJson(res, 200, { entries: entriesFor(state, sessionId) });
+  }
+
+  /**
    * @param {http.IncomingMessage} req
    * @param {http.ServerResponse} res
    */
@@ -518,25 +578,7 @@ export class AnnotatrServer {
    * @returns {Promise<Record<string, unknown>|null>}
    */
   async #readJsonBody(req, res) {
-    const origin = req.headers.origin;
-    if (typeof origin === 'string') {
-      /** @type {string|undefined} */
-      let originHost;
-      try {
-        originHost = new URL(origin).host;
-      } catch {
-        originHost = undefined;
-      }
-      if (originHost === undefined || !isAllowedHost(originHost, this.port)) {
-        sendJson(res, 403, { error: 'Cross-origin requests are not accepted' });
-        return null;
-      }
-    }
-    const fetchSite = req.headers['sec-fetch-site'];
-    if (typeof fetchSite === 'string' && fetchSite !== 'same-origin' && fetchSite !== 'none') {
-      sendJson(res, 403, { error: 'Cross-site requests are not accepted' });
-      return null;
-    }
+    if (!this.#assertSameOrigin(req, res)) return null;
     const contentType = req.headers['content-type'] ?? '';
     if (!contentType.toLowerCase().startsWith('application/json')) {
       sendJson(res, 415, { error: 'Expected application/json' });
@@ -562,6 +604,37 @@ export class AnnotatrServer {
       sendJson(res, 400, { error: 'Body must be a JSON object' });
       return null;
     }
+  }
+
+  /**
+   * Reject a state-changing request from another origin. Answers the request
+   * and returns false when it is rejected.
+   *
+   * @param {http.IncomingMessage} req
+   * @param {http.ServerResponse} res
+   * @returns {boolean}
+   */
+  #assertSameOrigin(req, res) {
+    const origin = req.headers.origin;
+    if (typeof origin === 'string') {
+      /** @type {string|undefined} */
+      let originHost;
+      try {
+        originHost = new URL(origin).host;
+      } catch {
+        originHost = undefined;
+      }
+      if (originHost === undefined || !isAllowedHost(originHost, this.port)) {
+        sendJson(res, 403, { error: 'Cross-origin requests are not accepted' });
+        return false;
+      }
+    }
+    const fetchSite = req.headers['sec-fetch-site'];
+    if (typeof fetchSite === 'string' && fetchSite !== 'same-origin' && fetchSite !== 'none') {
+      sendJson(res, 403, { error: 'Cross-site requests are not accepted' });
+      return false;
+    }
+    return true;
   }
 
   async #ingestionAvailable() {

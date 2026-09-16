@@ -9,11 +9,11 @@ import { escapeHtml } from './render-markdown.js';
 /** @typedef {import('./threads.js').Thread} Thread */
 
 /**
- * @param {{ turn: Turn, documentHtml: string, threads: Thread[], ingestionAvailable: boolean }} input
+ * @param {{ turn: Turn, documentHtml: string, threads: Thread[], carryBack: import('./carry-back.js').CarryBackEntry[], ingestionAvailable: boolean }} input
  * @returns {string}
  */
-export function renderTurnPage({ turn, documentHtml, threads, ingestionAvailable }) {
-  const data = { turn: { ...turn, message: undefined }, threads };
+export function renderTurnPage({ turn, documentHtml, threads, carryBack, ingestionAvailable }) {
+  const data = { turn: { ...turn, message: undefined }, threads, carryBack };
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -38,6 +38,21 @@ ${documentHtml}
   <aside class="thread-pane" id="thread-pane" aria-live="polite">
     <p class="thread-empty">Select text in the document to ask about it.</p>
   </aside>
+  <section class="carry-back" id="carry-back" aria-labelledby="carry-back-title">
+    <header class="carry-back-header">
+      <h2 class="carry-back-title" id="carry-back-title">Carry back</h2>
+      <span class="carry-back-count" id="carry-back-count"></span>
+      <span class="carry-back-hint">Only these lines reach the terminal, as context on your next prompt in this session.</span>
+    </header>
+    <ul class="carry-back-list" id="carry-back-list"></ul>
+    <form class="carry-back-form" id="carry-back-form">
+      <label class="visually-hidden" for="carry-back-text">Conclusion to carry back</label>
+      <textarea id="carry-back-text" class="carry-back-text" rows="2" placeholder="A conclusion to carry back, in your own words…"></textarea>
+      <div class="form-actions">
+        <button type="submit" class="button-primary" id="carry-back-add">Add to carry-back</button>
+      </div>
+    </form>
+  </section>
 </main>
 <form id="ask-popover" class="ask-popover" hidden>
   <blockquote class="ask-selection" id="ask-selection"></blockquote>

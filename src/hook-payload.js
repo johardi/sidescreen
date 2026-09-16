@@ -99,3 +99,30 @@ function requireNonEmptyString(raw, field) {
     throw new HookPayloadError(`Field "${field}" must not be empty`, field);
   }
 }
+
+/**
+ * @typedef {object} UserPromptSubmitPayload
+ * @property {string} sessionId
+ * @property {string|null} cwd
+ * @property {string} prompt
+ */
+
+/**
+ * Parse a `UserPromptSubmit` hook payload. Only the session id is required;
+ * it scopes which carry-back entries belong to the prompt being submitted.
+ *
+ * @param {string|unknown} input Raw JSON text, or an already-parsed value.
+ * @returns {UserPromptSubmitPayload}
+ * @throws {HookPayloadError}
+ */
+export function parseUserPromptSubmitPayload(input) {
+  const raw = toObject(input);
+  requireNonEmptyString(raw, 'session_id');
+  const cwd = raw.cwd;
+  const prompt = raw.prompt;
+  return {
+    sessionId: /** @type {string} */ (raw.session_id),
+    cwd: typeof cwd === 'string' && cwd !== '' ? cwd : null,
+    prompt: typeof prompt === 'string' ? prompt : '',
+  };
+}

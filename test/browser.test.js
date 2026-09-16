@@ -299,3 +299,33 @@ test('5.5 five sibling branches stay usable as tabs at 400px width', async (t) =
   assert.deepEqual(consoleErrors, []);
 });
 
+// ---- Group 6: carry back -----------------------------------------------------
+
+test('6.1 carry-back entries added in the page survive a reload, and an answer can seed one', async (t) => {
+  const { url } = await startServer(t, { dispatch: lineageStub });
+  await seedThread(url, 'why the lock?');
+  const { page, consoleErrors } = await openBrowser(t);
+  await page.goto(new URL('/turns/prompt-1', url).href);
+  assert.equal(await page.locator('#carry-back-count').textContent(), 'nothing pending');
+
+  await page.locator('#carry-back-text').fill('The directory lock stays.');
+  await page.keyboard.press('Enter');
+  await page.locator('.carry-back-entry').waitFor();
+  assert.equal(await page.locator('#carry-back-count').textContent(), '1 pending');
+
+  await page.locator('.carry-button').first().click();
+  assert.equal(await page.locator('#carry-back-text').inputValue(), 'Answer to why the lock?', 'the answer text seeds the draft');
+  await page.locator('#carry-back-add').click();
+  await page.locator('.carry-back-entry').nth(1).waitFor();
+
+  await page.reload();
+  await page.locator('.carry-back-entry').nth(1).waitFor();
+  assert.deepEqual(await page.locator('.carry-back-entry-text').allTextContents(), ['The directory lock stays.', 'Answer to why the lock?']);
+  assert.equal(await page.locator('#carry-back-count').textContent(), '2 pending');
+
+  await page.locator('.carry-back-remove').nth(1).click();
+  await page.locator('.carry-back-entry').nth(1).waitFor({ state: 'detached' });
+  await page.reload();
+  assert.deepEqual(await page.locator('.carry-back-entry-text').allTextContents(), ['The directory lock stays.']);
+  assert.deepEqual(consoleErrors, []);
+});

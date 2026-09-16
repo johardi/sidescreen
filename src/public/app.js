@@ -9,9 +9,10 @@ import { familyOf, rootOf, rootThreads } from './thread-tree.js';
 /** @typedef {import('../threads.js').Exchange & { answerHtml: string|null }} PresentedExchange */
 /** @typedef {Omit<import('../threads.js').Thread, 'exchanges'> & { exchanges: PresentedExchange[], detached?: boolean }} PresentedThread */
 /** @typedef {import('../types.js').Turn} Turn */
+/** @typedef {import('../carry-back.js').CarryBackEntry} CarryBackEntry */
 
 const dataElement = /** @type {HTMLScriptElement} */ (document.getElementById('turn-data'));
-const initial = /** @type {{ turn: Turn, threads: PresentedThread[] }} */ (JSON.parse(dataElement.textContent ?? '{}'));
+const initial = /** @type {{ turn: Turn, threads: PresentedThread[], carryBack: CarryBackEntry[] }} */ (JSON.parse(dataElement.textContent ?? '{}'));
 
 const documentElement = /** @type {HTMLElement} */ (document.getElementById('document'));
 const threadPane = /** @type {HTMLElement} */ (document.getElementById('thread-pane'));
@@ -20,11 +21,19 @@ const selectionQuote = /** @type {HTMLElement} */ (document.getElementById('ask-
 const questionInput = /** @type {HTMLTextAreaElement} */ (document.getElementById('ask-question'));
 const cancelButton = /** @type {HTMLButtonElement} */ (document.getElementById('ask-cancel'));
 const submitButton = /** @type {HTMLButtonElement} */ (document.getElementById('ask-submit'));
+const carryBackSection = /** @type {HTMLElement} */ (document.getElementById('carry-back'));
+const carryBackCount = /** @type {HTMLElement} */ (document.getElementById('carry-back-count'));
+const carryBackList = /** @type {HTMLElement} */ (document.getElementById('carry-back-list'));
+const carryBackForm = /** @type {HTMLFormElement} */ (document.getElementById('carry-back-form'));
+const carryBackText = /** @type {HTMLTextAreaElement} */ (document.getElementById('carry-back-text'));
+const carryBackAdd = /** @type {HTMLButtonElement} */ (document.getElementById('carry-back-add'));
 
 const state = {
   turn: initial.turn,
   /** @type {PresentedThread[]} */
   threads: initial.threads ?? [],
+  /** @type {CarryBackEntry[]} */
+  carryBack: initial.carryBack ?? [],
   /** @type {string|null} */
   activeThreadId: null,
   /** @type {import('./anchor.js').Anchor|null} */
@@ -151,6 +160,7 @@ popover.addEventListener('submit', async (event) => {
 function render() {
   applyMarks();
   renderThreadPane();
+  renderCarryBack();
 }
 
 /** The thread shown in the column: the chosen one, else the newest root. */
@@ -248,6 +258,14 @@ function renderThread(thread, root, index) {
     item.append(renderAnswer(exchange));
     if (exchange.status === 'answered' && exchange.subAgentSessionId) {
       const actions = element('div', { class: 'exchange-actions' });
+      const carryButton = element('button', { type: 'button', class: 'carry-button', title: 'Draft a carry-back entry from this answer' }, 'Carry back');
+      carryButton.addEventListener('click', () => {
+        if (carryBackText.value.trim() === '') carryBackText.value = answerPlainText(exchange);
+        carryBackText.dataset.threadId = thread.id;
+        carryBackSection.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        carryBackText.focus({ preventScroll: true });
+      });
+      actions.append(carryButton);
       const branchButton = element('button', { type: 'button', class: 'branch-button', title: `Start a new line of questioning from answer ${position + 1}` }, 'Branch from here');
       branchButton.addEventListener('click', () => {
         state.branchingFrom = state.branchingFrom === exchange.id ? null : exchange.id;
@@ -448,6 +466,65 @@ function element(tag, attributes = {}, text) {
   return node;
 }
 
+// ---- Carry back --------------------------------------------------------------
+
+function renderCarryBack() {
+  const pending = state.carryBack.filter((entry) => entry.emittedAt === null);
+  carryBackCount.textContent = pending.length === 0 ? 'nothing pending' : `${pending.length} pending`;
+  carryBackList.replaceChildren();
+  for (const entry of state.carryBack) {
+    const item = element('li', { class: 'carry-back-entry', 'data-entry-id': entry.id, 'data-state': entry.emittedAt === null ? 'pending' : 'sent' });
+    item.append(element('span', { class: 'carry-back-entry-text' }, entry.text));
+    if (entry.emittedAt === null) {
+      const remove = element('button', { type: 'button', class: 'carry-back-remove', 'aria-label': 'Remove this entry' }, 'Remove');
+      remove.addEventListener('click', async () => {
+        remove.disabled = true;
+        try {
+          const response = await fetch(`/api/sessions/${encodeURIComponent(state.turn.sessionId)}/carry-back/${encodeURIComponent(entry.id)}`, { method: 'DELETE' });
+          if (!response.ok) throw new Error(`Request failed with ${response.status}`);
+          const { entries } = /** @type {{ entries: CarryBackEntry[] }} */ (await response.json());
+          state.carryBack = entries;
+          renderCarryBack();
+        } catch {
+          remove.disabled = false;
+        }
+      });
+      item.append(remove);
+    } else {
+      item.append(element('span', { class: 'carry-back-sent', title: `Sent to the terminal at ${entry.emittedAt}` }, 'sent'));
+    }
+    carryBackList.append(item);
+  }
+}
+
+carryBackText.addEventListener('keydown', submitOnEnter(carryBackForm));
+carryBackForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const text = carryBackText.value.trim();
+  if (text === '') return;
+  carryBackAdd.disabled = true;
+  try {
+    const { entries } = /** @type {{ entries: CarryBackEntry[] }} */ (
+      await postJson(`/api/sessions/${encodeURIComponent(state.turn.sessionId)}/carry-back`, { text, threadId: carryBackText.dataset.threadId ?? null })
+    );
+    state.carryBack = entries;
+    carryBackText.value = '';
+    delete carryBackText.dataset.threadId;
+    renderCarryBack();
+  } catch (error) {
+    showFormError(carryBackForm, /** @type {Error} */ (error));
+  } finally {
+    carryBackAdd.disabled = false;
+  }
+});
+
+/** @param {PresentedExchange} exchange */
+function answerPlainText(exchange) {
+  const scratch = document.createElement('div');
+  scratch.innerHTML = exchange.answerHtml ?? '';
+  return (scratch.textContent ?? '').trim();
+}
+
 // ---- Data ------------------------------------------------------------------
 
 /**
@@ -477,13 +554,14 @@ async function refresh() {
   try {
     const response = await fetch(`/api/turns/${encodeURIComponent(state.turn.promptId)}`);
     if (!response.ok) return;
-    const data = /** @type {{ turn: Turn, documentHtml: string, threads: PresentedThread[] }} */ (await response.json());
+    const data = /** @type {{ turn: Turn, documentHtml: string, threads: PresentedThread[], carryBack: CarryBackEntry[] }} */ (await response.json());
     if (data.turn.receivedAt !== state.turn.receivedAt) {
       state.turn = data.turn;
       clearMarks(documentElement);
       documentElement.innerHTML = data.documentHtml;
     }
     state.threads = data.threads;
+    state.carryBack = data.carryBack ?? [];
     render();
   } finally {
     schedulePoll();
@@ -498,7 +576,7 @@ function schedulePoll() {
 }
 
 const events = new EventSource('/api/events');
-for (const type of ['thread-created', 'thread-updated', 'store-changed']) {
+for (const type of ['thread-created', 'thread-updated', 'carry-back-updated', 'store-changed']) {
   events.addEventListener(type, () => {
     refresh();
   });
