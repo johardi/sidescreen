@@ -19,6 +19,7 @@ import { homedir } from 'node:os';
 /** Hooks annotatr needs. */
 export const HOOK_REGISTRATIONS = /** @type {readonly HookRegistration[]} */ ([
   { event: 'Stop', subcommand: 'ingest' },
+  { event: 'UserPromptSubmit', subcommand: 'carry-back --emit' },
 ]);
 
 /**

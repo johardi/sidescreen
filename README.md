@@ -37,6 +37,7 @@ The answer renders in the right-hand column with the source it was drawn from: `
 | `annotatr init [--dry-run]` | Set up the current directory: register the hooks in `./.claude/settings.json` and install annotatr's skills into `./.claude/skills/`. Idempotent. Files that are not annotatr's are never touched. |
 | `annotatr setup hooks [--settings <path>] [--project] [--dry-run]` | Register annotatr's hooks idempotently. Reports, rather than edits, a settings file it cannot parse. |
 | `annotatr ingest` | Read a `Stop` hook payload on stdin and store the turn. Run by the hook, not by hand. |
+| `annotatr carry-back --emit` | Print the session's pending carry-back entries as plain text, then mark them sent. Run by the `UserPromptSubmit` hook, not by hand. |
 | `annotatr serve [--port <n>] [--open]` | Start the browser surface on loopback. |
 
 ## The shipped skill

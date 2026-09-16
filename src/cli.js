@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { VERSION } from './version.js';
 import { ingest } from './ingest.js';
+import { carryBackCommand } from './carry-back.js';
 import { init } from './init.js';
 import { defaultSettingsPath, projectSettingsPath, setupHooks } from './setup-hooks.js';
 import { Store, defaultStateDir } from './store.js';
@@ -25,6 +26,8 @@ Usage:
                                           skills in ./.claude/skills/
       --dry-run                             Report what would change without writing
   annotatr ingest                         Read a Stop hook payload on stdin and store the turn
+  annotatr carry-back --emit              Print pending carry-back entries for the session in the
+                                          UserPromptSubmit payload on stdin (or --session <id>)
   annotatr setup hooks [options]          Register annotatr's hooks in Claude Code settings
       --settings <path>                     Settings file to edit (default: ~/.claude/settings.json)
       --project                             Edit ./.claude/settings.json instead
@@ -73,6 +76,9 @@ export async function main(argv, io) {
 
     case 'ingest':
       return ingest(io);
+
+    case 'carry-back':
+      return carryBackCommand(rest, io);
 
     case 'setup':
       return setup(rest, io);
