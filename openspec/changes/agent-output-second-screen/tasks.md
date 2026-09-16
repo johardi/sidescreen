@@ -42,10 +42,10 @@
 ## 6. Carry-back return path (spec: only chosen conclusions return to the main session)
 
 - [x] 6.1 Implement a carry-back list the user adds entries to during a review, stored per session; verify entries survive a page reload
-- [ ] 6.2 Implement `annotatr carry-back --emit` printing only the pending entries as plain text, and nothing when the list is empty; verify tests cover a populated list and an empty one
-- [ ] 6.3 Register a `UserPromptSubmit` hook through `annotatr setup hooks` that runs that command, so its stdout is injected as context on the next prompt; verify running setup twice produces one entry per event
-- [ ] 6.4 Clear emitted entries after a successful emit so a conclusion is not injected into every later prompt; verify a test asserts the second emit prints nothing
-- [ ] 6.5 Add an end-to-end test asserting that thread contents never appear in the emitted output, only carry-back entries; verify the test fails if a question or answer leaks
+- [x] 6.2 Implement `annotatr carry-back --emit` printing only the pending entries as plain text, and nothing when the list is empty; verify tests cover a populated list and an empty one
+- [x] 6.3 Register a `UserPromptSubmit` hook through `annotatr setup hooks` that runs that command, so its stdout is injected as context on the next prompt; verify running setup twice produces one entry per event
+- [x] 6.4 Clear emitted entries after a successful emit so a conclusion is not injected into every later prompt; verify a test asserts the second emit prints nothing
+- [x] 6.5 Add an end-to-end test asserting that thread contents never appear in the emitted output, only carry-back entries; verify the test fails if a question or answer leaks
 
 ## 7. Verification across the whole change
 
@@ -55,6 +55,6 @@
 
 ## 8. Project setup (spec: a project is set up in one step)
 
-- [ ] 8.1 Implement `annotatr init`, which registers both hooks in `./.claude/settings.json` and installs the shipped skills into `./.claude/skills/`, reporting each change and stopping before the skills when the settings file cannot be parsed; verify tests cover a first run, a second run that changes nothing, a locally edited skill copy being restored, and foreign skill files being left alone
-- [ ] 8.2 Ship an `annotatr` skill that tells the main session its final message is the reviewed document, that the hooks run annotatr's commands, and how to treat a carried-back block; verify a test asserts every shipped skill's frontmatter name matches its directory
-- [ ] 8.3 Add an opt-in end-to-end test that runs `annotatr init` in a fresh project and then `claude -p` there; verify the turn reaches the store through the project-level hook without touching user configuration
+- [x] 8.1 Implement `annotatr init`, which registers both hooks in `./.claude/settings.json` and installs the shipped skills into `./.claude/skills/`, reporting each change and stopping before the skills when the settings file cannot be parsed; verify tests cover a first run, a second run that changes nothing, a locally edited skill copy being restored, and foreign skill files being left alone
+- [x] 8.2 Ship an `annotatr` skill that tells the main session its final message is the reviewed document, that the hooks run annotatr's commands, and how to treat a carried-back block; verify a test asserts every shipped skill's frontmatter name matches its directory
+- [x] 8.3 Add an opt-in end-to-end test that runs `annotatr init` in a fresh project and then `claude -p` there; verify the turn reaches the store through the project-level hook without touching user configuration
