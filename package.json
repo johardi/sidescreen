@@ -9,6 +9,7 @@
   },
   "files": [
     "bin",
+    "skills",
     "src"
   ],
   "engines": {
