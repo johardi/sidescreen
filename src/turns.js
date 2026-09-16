@@ -1,3 +1,5 @@
+import { refreshSessionTimes, upsertSession } from './sessions.js';
+
 /** @typedef {import('./types.js').Turn} Turn */
 /** @typedef {import('./types.js').State} State */
 /** @typedef {import('./hook-payload.js').StopHookPayload} StopHookPayload */
@@ -21,16 +23,19 @@ export function turnFromPayload(payload, now = new Date()) {
 }
 
 /**
- * Store a turn, replacing any earlier turn with the same promptId.
+ * Store a turn, replacing any earlier turn with the same promptId, and record
+ * it against its session.
  *
  * @param {import('./store.js').Store} store
  * @param {StopHookPayload} payload
+ * @param {{ title?: string|null, now?: Date }} [options] The session title, when the caller found one.
  * @returns {Promise<Turn>}
  */
-export async function recordTurn(store, payload) {
-  const turn = turnFromPayload(payload);
+export async function recordTurn(store, payload, { title = null, now = new Date() } = {}) {
+  const turn = turnFromPayload(payload, now);
   await store.update((state) => {
     state.turns[turn.promptId] = turn;
+    upsertSession(state, turn, title);
   });
   return turn;
 }
@@ -43,4 +48,45 @@ export async function recordTurn(store, payload) {
  */
 export function listTurns(state) {
   return Object.values(state.turns).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
+}
+
+/**
+ * One session's turns, newest first.
+ *
+ * @param {State} state
+ * @param {string} sessionId
+ * @returns {Turn[]}
+ */
+export function turnsForSession(state, sessionId) {
+  return listTurns(state).filter((turn) => turn.sessionId === sessionId);
+}
+
+/**
+ * @typedef {object} RemovedTurn
+ * @property {Turn} turn
+ * @property {number} removedThreads How many threads went with it.
+ * @property {boolean} sessionRemoved Whether it was the session's last turn.
+ */
+
+/**
+ * Remove a turn and every thread anchored in it. Carry-back entries are the
+ * user's conclusions and stay. A session with no turn left is removed too.
+ *
+ * @param {State} state
+ * @param {string} promptId
+ * @returns {RemovedTurn|null} Null when there is no such turn.
+ */
+export function removeTurn(state, promptId) {
+  const turn = state.turns[promptId];
+  if (!turn) return null;
+  delete state.turns[promptId];
+  let removedThreads = 0;
+  for (const [threadId, thread] of Object.entries(state.threads)) {
+    if (thread.promptId !== promptId) continue;
+    delete state.threads[threadId];
+    removedThreads += 1;
+  }
+  const sessionRemoved = !refreshSessionTimes(state, turn.sessionId);
+  if (sessionRemoved) delete state.sessions[turn.sessionId];
+  return { turn, removedThreads, sessionRemoved };
 }

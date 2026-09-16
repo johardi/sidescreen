@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, access } from 'node:fs/promises';
+import { readFile, access, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { FIXTURES, runCli, tempDir } from './helpers.js';
 import { Store } from '../src/store.js';
@@ -33,6 +33,31 @@ test('a second Stop for the same prompt_id replaces the turn rather than duplica
   const state = await new Store(stateDir).read();
   assert.equal(Object.keys(state.turns).length, 1);
   assert.equal(state.turns[fixture.prompt_id].message, 'banana, revised');
+});
+
+test('ingest records the session and reads its title from the transcript, keeping it when a later transcript has none', async (t) => {
+  const dir = await tempDir(t);
+  const stateDir = join(dir, 'state');
+  const env = { ANNOTATR_STATE_DIR: stateDir };
+  const untitled = join(dir, 'untitled.jsonl');
+  await writeFile(untitled, JSON.stringify({ type: 'user', message: { role: 'user', content: 'hi' } }) + '\n', 'utf8');
+  const titled = join(dir, 'titled.jsonl');
+  await writeFile(titled, JSON.stringify({ type: 'ai-title', aiTitle: 'Project level hook installation', sessionId: fixture.session_id }) + '\n', 'utf8');
+
+  await runCli(['ingest'], { env, input: JSON.stringify({ ...fixture, prompt_id: 'first', transcript_path: untitled }) });
+  let session = (await new Store(stateDir).read()).sessions[fixture.session_id];
+  assert.ok(session, 'the session is recorded with its first turn');
+  assert.equal(session.title, null, 'no title yet');
+  assert.equal(session.cwd, fixture.cwd);
+
+  await runCli(['ingest'], { env, input: JSON.stringify({ ...fixture, prompt_id: 'second', transcript_path: titled }) });
+  session = (await new Store(stateDir).read()).sessions[fixture.session_id];
+  assert.equal(session.title, 'Project level hook installation');
+
+  await runCli(['ingest'], { env, input: JSON.stringify({ ...fixture, prompt_id: 'third', transcript_path: untitled }) });
+  session = (await new Store(stateDir).read()).sessions[fixture.session_id];
+  assert.equal(session.title, 'Project level hook installation', 'a title once seen is kept');
+  assert.ok(session.lastTurnAt >= session.startedAt);
 });
 
 test('a malformed payload exits 1 with a message and writes nothing', async (t) => {

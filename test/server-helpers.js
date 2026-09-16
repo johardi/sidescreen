@@ -2,6 +2,8 @@ import http from 'node:http';
 import { Store } from '../src/store.js';
 import { createServer } from '../src/server.js';
 import { turnFromPayload } from '../src/turns.js';
+import { upsertSession } from '../src/sessions.js';
+import { projectId, turnPath } from '../src/projects.js';
 import { tempDir } from './helpers.js';
 
 /**
@@ -34,7 +36,10 @@ export async function startServer(t, { dispatch, turns = [sampleTurn()], env = {
   const stateDir = givenStateDir ?? (await tempDir(t, 'annotatr-server-'));
   const store = new Store(stateDir);
   await store.update((state) => {
-    for (const turn of turns) state.turns[turn.promptId] = turn;
+    for (const turn of turns) {
+      state.turns[turn.promptId] = turn;
+      upsertSession(state, turn);
+    }
   });
   const server = createServer({
     store,
@@ -45,6 +50,15 @@ export async function startServer(t, { dispatch, turns = [sampleTurn()], env = {
   const url = await server.listen({ port: 0 });
   t.after(() => server.close());
   return { server, store, url, port: server.port, stateDir };
+}
+
+/**
+ * The pinned address of a turn.
+ *
+ * @param {Pick<import('../src/types.js').Turn, 'cwd'|'sessionId'|'promptId'>} turn
+ */
+export function turnHref(turn) {
+  return turnPath(projectId(turn.cwd), turn.sessionId, turn.promptId);
 }
 
 /**

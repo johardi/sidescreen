@@ -1,11 +1,15 @@
 /**
  * `annotatr ingest`: read a Stop hook payload from stdin and store the turn.
  *
- * This module deliberately has no filesystem access of its own. The turn's
- * text comes from the payload's `last_assistant_message` and from nowhere else.
+ * This module has no filesystem access of its own. The turn's text comes from
+ * the payload's `last_assistant_message` and from nowhere else. The one thing
+ * read from the transcript is the session's title, through a reader that
+ * returns a label and never sees a message, and whose failure changes nothing
+ * about the turn.
  */
 
 import { HookPayloadError, parseStopHookPayload } from './hook-payload.js';
+import { readSessionTitle } from './session-title.js';
 import { Store, defaultStateDir } from './store.js';
 import { recordTurn } from './turns.js';
 
@@ -25,9 +29,10 @@ export async function readAll(stream) {
 
 /**
  * @param {import('./cli.js').CliIo} io
+ * @param {{ readTitle?: (transcriptPath: string|null) => Promise<string|null> }} [options] Injectable for tests.
  * @returns {Promise<number>} Exit code. Non-zero is a non-blocking hook error.
  */
-export async function ingest(io) {
+export async function ingest(io, { readTitle = readSessionTitle } = {}) {
   const text = await readAll(io.stdin);
   /** @type {import('./hook-payload.js').StopHookPayload} */
   let payload;
@@ -41,6 +46,7 @@ export async function ingest(io) {
     throw error;
   }
   const store = new Store(defaultStateDir(io.env));
-  await recordTurn(store, payload);
+  const title = await readTitle(payload.transcriptPath);
+  await recordTurn(store, payload, { title });
   return 0;
 }

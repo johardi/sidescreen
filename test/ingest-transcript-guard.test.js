@@ -51,10 +51,14 @@ test('ingest succeeds when the transcript path is unreadable, because it never o
   assert.equal(Object.keys((await new Store(stateDir).read()).turns).length, 2);
 });
 
-test('the ingest modules have no filesystem access of their own', async () => {
-  for (const file of ['ingest.js', 'hook-payload.js', 'turns.js']) {
+test('the ingest modules have no filesystem access of their own, and the transcript path reaches only the title reader', async () => {
+  for (const file of ['ingest.js', 'hook-payload.js', 'turns.js', 'sessions.js']) {
     const source = await readFile(fileURLToPath(new URL(`../src/${file}`, import.meta.url)), 'utf8');
     assert.doesNotMatch(source, /['"]node:fs|['"]fs['"]|readFile|createReadStream|openSync|readline/, `${file} must not read files`);
-    assert.doesNotMatch(source, /transcriptPath\s*\)/, `${file} must not pass the transcript path to anything`);
+    const handedTo = [...source.matchAll(/(\w+)\(\s*payload\.transcriptPath\s*\)/g)].map((match) => match[1]);
+    assert.deepEqual(new Set(handedTo), new Set(file === 'ingest.js' ? ['readTitle'] : []), `${file} may hand the transcript path to the title reader and nothing else`);
+    assert.doesNotMatch(source.replaceAll('readTitle(payload.transcriptPath)', ''), /transcriptPath\s*\)/, `${file} must not pass the transcript path to anything else`);
   }
+  const titleReader = await readFile(fileURLToPath(new URL('../src/session-title.js', import.meta.url)), 'utf8');
+  assert.doesNotMatch(titleReader, /lastAssistantMessage|last_assistant_message|\.message\b|"assistant"/, 'the title reader never looks at messages');
 });
