@@ -10,7 +10,7 @@ A browser surface that receives agent output, lets the user point at any part of
 - Output is ingested through a Claude Code `Stop` hook, using the `last_assistant_message` field. No CLI call is required from the agent, so ingestion cannot depend on the agent remembering to cooperate.
 - The user selects any text range in a rendered message and attaches a question to it, creating an anchored thread.
 - Annotatr dispatches each question to a sub-agent process under a read-only sandbox. The answer renders in the GUI and never reaches the main session.
-- Threads support drilling and branching. A follow-up resumes the same sub-agent session; a branch forks it, so sibling branches cannot pollute each other.
+- Threads support drilling and branching. Every question forks the sub-agent session of the answer it continues, so a follow-up carries the thread's context forward, a branch from any earlier answer sees only what came before it, and sibling branches cannot pollute each other.
 - Every sub-agent answer declares its source (code, session transcript, OpenSpec document, or none). "No documented intent found" is a valid and expected answer.
 - A carry-back list accumulates the user's conclusions during the session. Only that list is returned to the main session, through a `UserPromptSubmit` hook whose stdout Claude Code injects as context.
 

@@ -97,13 +97,24 @@ It pushes output and returns control to the user, which is what makes "go back t
 
 The write-capable recipient is drawn here for completeness and is out of scope for this change.
 
-### Threads resume; branches fork
+### Every question forks the answer it continues
 
-A follow-up question uses `codex exec resume` on the thread's session, so accumulated context carries forward.
-A branch uses `codex exec fork`, so it inherits context up to that point and cannot affect its siblings.
+A thread's first question starts a fresh sub-agent session.
+Every later question, follow-up or branch alike, uses `codex exec fork` on the session of the answer it continues, and the new answer keeps the new session id.
+A session is never resumed, so once an answer exists its session is immutable.
 
+This is what makes branching exact.
+A branch from an earlier answer forks that answer's session and sees only what came before it, even when the thread has since moved on.
+Follow-up and branch are the same operation; they differ only in whether the new exchange is appended to the thread or opens a sibling thread.
+Because no session is ever mutated after it answers, follow-ups and branches are safe to run concurrently without locks.
+
+Probed on the real CLI: a fork with a prompt answered in five seconds and recalled the parent's question and answer exactly, and a fork without a prompt returned a new session id in one second without a model call.
 Cold-starting every question would make drilling useless by the third question, and would pay full context cost every time.
-Because side questions cannot write, branches are safe to run concurrently.
+
+Alternative considered: `codex exec resume` for follow-ups, with `fork` only for branches.
+Rejected because a resume grows one session per thread, so once a follow-up exists there is no session state that ends at the earlier answer, and a branch from that answer would see the follow-up too.
+A variant that snapshots the session with a prompt-less fork before every resume was also considered.
+It restores exact branching but needs two code paths and two processes per follow-up, and a failed snapshot silently loses a branch point.
 
 ### The UI is three zones, not a graph
 
@@ -163,7 +174,7 @@ Requiring the source to be named is what lets the user weigh it.
 
 - **The sub-agent does not inherit the user's global agent instructions.** Observed: a delegated rewrite violated a documented house style rule. → Annotatr forwards the relevant conventions into every dispatch prompt, once, in one place. This is a reason to prefer dispatch, since under relay the forwarding would be the relaying agent's discretion.
 
-- **Drilling is expensive.** A probe measured roughly 34,000 tokens for a single trivial delegated edit. A dozen-question tree is not free. → Thread resume amortizes context across a chain, and the surface shows what is running so cost is visible rather than discovered later.
+- **Drilling is expensive.** A probe measured roughly 34,000 tokens for a single trivial delegated edit. A dozen-question tree is not free. → Forking the answer being continued carries the chain's context forward instead of restarting cold, and the surface shows what is running so cost is visible rather than discovered later.
 
 - **Hook integration ties ingestion to one harness.** → Ingestion degrades to unavailable, with that stated in the surface, rather than silently producing an empty or stale document.
 
