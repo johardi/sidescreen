@@ -1,9 +1,9 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { join } from 'node:path';
 import { VERSION } from './version.js';
 import { ingest } from './ingest.js';
-import { defaultSettingsPath, setupHooks } from './setup-hooks.js';
+import { init } from './init.js';
+import { defaultSettingsPath, projectSettingsPath, setupHooks } from './setup-hooks.js';
 import { Store, defaultStateDir } from './store.js';
 import { DEFAULT_PORT, createServer } from './server.js';
 import { createCodexDispatch, dispatchSettings } from './dispatch.js';
@@ -21,6 +21,9 @@ const BIN_PATH = fileURLToPath(new URL('../bin/annotatr.js', import.meta.url));
 const USAGE = `annotatr ${VERSION}
 
 Usage:
+  annotatr init [options]                 Set up the current directory: hooks in ./.claude/settings.json,
+                                          skills in ./.claude/skills/
+      --dry-run                             Report what would change without writing
   annotatr ingest                         Read a Stop hook payload on stdin and store the turn
   annotatr setup hooks [options]          Register annotatr's hooks in Claude Code settings
       --settings <path>                     Settings file to edit (default: ~/.claude/settings.json)
@@ -65,6 +68,9 @@ export async function main(argv, io) {
       io.stdout.write(USAGE);
       return command === undefined ? 1 : 0;
 
+    case 'init':
+      return initCommand(rest, io);
+
     case 'ingest':
       return ingest(io);
 
@@ -85,6 +91,23 @@ export async function main(argv, io) {
  * @param {CliIo} io
  * @returns {Promise<number>}
  */
+async function initCommand(argv, io) {
+  const options = parseFlags(argv, { 'dry-run': 'boolean' }, io);
+  if (options === null) return 1;
+  return init({
+    cwd: process.cwd(),
+    binPath: BIN_PATH,
+    stdout: io.stdout,
+    stderr: io.stderr,
+    dryRun: options['dry-run'] === true,
+  });
+}
+
+/**
+ * @param {string[]} argv
+ * @param {CliIo} io
+ * @returns {Promise<number>}
+ */
 async function setup(argv, io) {
   const [target, ...rest] = argv;
   if (target !== 'hooks') {
@@ -96,7 +119,7 @@ async function setup(argv, io) {
 
   let settingsPath = defaultSettingsPath(io.env);
   if (typeof options.settings === 'string') settingsPath = options.settings;
-  else if (options.project === true) settingsPath = join(process.cwd(), '.claude', 'settings.json');
+  else if (options.project === true) settingsPath = projectSettingsPath(process.cwd());
 
   return setupHooks({
     settingsPath,

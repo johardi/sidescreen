@@ -13,7 +13,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { BIN, tempDir } from './helpers.js';
+import { BIN, runCli, tempDir } from './helpers.js';
 import { registerHooks } from '../src/setup-hooks.js';
 import { Store } from '../src/store.js';
 
@@ -76,6 +76,34 @@ test(
     assert.equal(await import('node:fs/promises').then((fs) => fs.realpath(turn.cwd)), await import('node:fs/promises').then((fs) => fs.realpath(workDir)));
     assert.ok(turn.sessionId.length > 0);
     assert.ok(turn.promptId.length > 0);
+
+    assert.equal(await readIfExists(userSettingsPath), userSettingsBefore, 'user settings were not modified');
+  },
+);
+
+test(
+  'after annotatr init, a claude -p turn in that project reaches the store through the project-level hook',
+  { skip: !optedIn ? 'set ANNOTATR_E2E_CLAUDE=1 to run against a real claude' : !claudeAvailable ? 'claude is not on PATH' : false },
+  async (t) => {
+    const workDir = await tempDir(t, 'annotatr-e2e-init-');
+    const stateDir = join(workDir, 'state');
+    const userSettingsPath = join(homedir(), '.claude', 'settings.json');
+    const userSettingsBefore = await readIfExists(userSettingsPath);
+
+    const setup = await runCli(['init'], { cwd: workDir });
+    assert.equal(setup.code, 0, setup.stderr);
+
+    const { stdout } = await execFileAsync(
+      'claude',
+      ['-p', '--model', 'haiku', '--no-session-persistence', 'Reply with exactly one word: banana'],
+      { cwd: workDir, env: childEnv({ ANNOTATR_STATE_DIR: stateDir }), timeout: 120_000 },
+    );
+    assert.match(stdout, /banana/i, 'claude answered');
+
+    const state = await new Store(stateDir).read();
+    const turns = Object.values(state.turns);
+    assert.equal(turns.length, 1, 'exactly one turn was ingested through ./.claude/settings.json');
+    assert.match(turns[0].message, /banana/i);
 
     assert.equal(await readIfExists(userSettingsPath), userSettingsBefore, 'user settings were not modified');
   },

@@ -16,9 +16,13 @@ A separate, read-only sub-agent answers, and nothing about the question or the a
 ```sh
 npm install
 npm link                      # puts `annotatr` on your PATH, optional
-annotatr setup hooks          # registers the Stop hook in ~/.claude/settings.json
+cd your-project
+annotatr init                 # hooks in ./.claude/settings.json, skill in ./.claude/skills/annotatr/
 annotatr serve --open         # http://127.0.0.1:7486/
 ```
+
+Claude Code reads hooks when it starts, so restart any session already open in that project.
+To register the hook for every project instead, run `annotatr setup hooks`, which edits `~/.claude/settings.json`.
 
 Finish a turn in Claude Code.
 It shows up in the browser on its own.
@@ -30,9 +34,16 @@ The answer renders in the right-hand column with the source it was drawn from: `
 
 | Command | What it does |
 | --- | --- |
+| `annotatr init [--dry-run]` | Set up the current directory: register the hooks in `./.claude/settings.json` and install annotatr's skills into `./.claude/skills/`. Idempotent. Files that are not annotatr's are never touched. |
 | `annotatr setup hooks [--settings <path>] [--project] [--dry-run]` | Register annotatr's hooks idempotently. Reports, rather than edits, a settings file it cannot parse. |
 | `annotatr ingest` | Read a `Stop` hook payload on stdin and store the turn. Run by the hook, not by hand. |
 | `annotatr serve [--port <n>] [--open]` | Start the browser surface on loopback. |
+
+## The shipped skill
+
+`annotatr init` installs one skill, `annotatr`, into the project.
+It tells the main session how annotatr works alongside it: the final message of a turn is what the user reviews, side questions never reach the session, how to treat conclusions the user carries back, and which commands open or repair the surface.
+The installed copy is annotatr's to maintain: a later `annotatr init` overwrites local edits to it and says so.
 
 ## Configuration
 

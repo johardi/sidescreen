@@ -52,6 +52,15 @@ export function defaultSettingsPath(env, home = homedir()) {
 }
 
 /**
+ * Project-scope settings file, shared through version control.
+ *
+ * @param {string} cwd
+ */
+export function projectSettingsPath(cwd) {
+  return join(cwd, '.claude', 'settings.json');
+}
+
+/**
  * The shell command a hook runs for a subcommand.
  *
  * @param {string} binPath Absolute path to bin/annotatr.js.
@@ -221,7 +230,7 @@ function escapeRegExp(value) {
 export async function isIngestHookRegistered({ env, cwd }) {
   const candidates = [
     defaultSettingsPath(env),
-    join(cwd, '.claude', 'settings.json'),
+    projectSettingsPath(cwd),
     join(cwd, '.claude', 'settings.local.json'),
   ];
   for (const path of candidates) {
