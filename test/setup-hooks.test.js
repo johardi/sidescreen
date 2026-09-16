@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { BIN, runCli, tempDir } from './helpers.js';
 import { hookCommand, isAnnotatrHookCommand, registerHooks } from '../src/setup-hooks.js';
@@ -14,9 +14,12 @@ test('running setup hooks twice produces exactly one Stop hook entry', async (t)
   assert.equal(first.code, 0, first.stderr);
   assert.match(first.stdout, /Stop: added/);
 
+  const afterFirst = await stat(settingsPath);
   const second = await runCli(['setup', 'hooks', '--settings', settingsPath]);
   assert.equal(second.code, 0, second.stderr);
   assert.match(second.stdout, /Stop: unchanged/);
+  assert.match(second.stdout, /is up to date/);
+  assert.equal((await stat(settingsPath)).mtimeMs, afterFirst.mtimeMs, 'an unchanged settings file is not rewritten');
 
   const settings = await readJson(settingsPath);
   const stopHooks = settings.hooks.Stop.flatMap((/** @type {{ hooks: { command: string }[] }} */ group) => group.hooks);

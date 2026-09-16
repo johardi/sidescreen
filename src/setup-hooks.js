@@ -187,7 +187,8 @@ export async function setupHooks({ settingsPath, binPath, stdout, stderr, dryRun
     throw error;
   }
 
-  if (!dryRun) {
+  const changed = result.report.some(({ action }) => action !== 'unchanged');
+  if (changed && !dryRun) {
     await mkdir(dirname(settingsPath), { recursive: true });
     await writeFile(settingsPath, JSON.stringify(result.settings, null, 2) + '\n', 'utf8');
   }
@@ -195,7 +196,8 @@ export async function setupHooks({ settingsPath, binPath, stdout, stderr, dryRun
   for (const { event, action, command } of result.report) {
     stdout.write(`${event}: ${action}${dryRun ? ' (dry run)' : ''}\n  ${command}\n`);
   }
-  stdout.write(`${dryRun ? 'Would write' : 'Wrote'} ${settingsPath}\n`);
+  if (changed) stdout.write(`${dryRun ? 'Would write' : 'Wrote'} ${settingsPath}\n`);
+  else stdout.write(`${settingsPath} is up to date\n`);
   return 0;
 }
 
