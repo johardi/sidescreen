@@ -51,7 +51,7 @@
 
 - [x] 7.1 Add a test asserting no dispatch path can be constructed with a write-capable sandbox flag, since side questions must never edit files; verify the test fails if the flag is made configurable
 - [x] 7.2 Add a test asserting the ingest path never reads `transcript_path` to obtain the current turn's text; verify it fails if transcript parsing is reintroduced
-- [ ] 7.3 Run the full `check` pipeline (build if present, lint, typecheck, tests) and confirm it passes from a clean checkout
+- [x] 7.3 Run the full `check` pipeline (build if present, lint, typecheck, tests) and confirm it passes from a clean checkout
 
 ## 8. Project setup (spec: a project is set up in one step)
 
