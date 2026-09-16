@@ -171,8 +171,9 @@ Both steps are idempotent and report what they changed.
 A shipped skill file that was edited locally is overwritten and reported, because the shipped copy is the one annotatr maintains; files that are not annotatr's are never touched.
 When the settings file cannot be parsed, the command reports it and stops before installing the skill, so a half-configured project is not left behind.
 
-Project scope is the default because the settings file travels with the repository and because the hook command embeds an absolute path to this checkout.
-`annotatr setup hooks` remains for the user-scope case.
+Project scope is the default because the settings file travels with the repository and shows the whole team that the project is reviewed this way.
+The hook command embeds an absolute path to this checkout, so a committed settings file works only where annotatr lives at that path; `annotatr setup hooks --settings .claude/settings.local.json` keeps the registration per machine.
+`annotatr setup hooks` without flags remains for the user-scope case.
 
 The skill exists because the main session is otherwise unaware of annotatr.
 Without it, the session cannot know that its final message is the document under review, may try to run the hook commands itself, and has no way to read a carried-back block as decisions rather than as new questions.
