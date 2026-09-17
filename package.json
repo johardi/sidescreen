@@ -1,7 +1,7 @@
 {
   "name": "sidescreen",
   "version": "0.1.0",
-  "description": "Review coding agent responses in your browser, ask a sub-agent about a snippet, and send back only the conclusions you choose.",
+  "description": "Review coding agent responses in your browser, ask a read-only sub-agent about a snippet, and send back only the conclusions you choose.",
   "keywords": [
     "claude-code",
     "coding-agent",
@@ -10,7 +10,8 @@
     "review",
     "second-screen",
     "hooks",
-    "sub-agent"
+    "sub-agent",
+    "codex"
   ],
   "homepage": "https://github.com/johardi/sidescreen#readme",
   "bugs": {
