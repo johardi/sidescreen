@@ -14,15 +14,18 @@ A separate, read-only sub-agent answers, and nothing about the question or the a
 ## Quick start
 
 ```sh
-npm install
-npm link                      # puts `sidescreen` on your PATH, optional
+npm install -g sidescreen
 cd your-project
-sidescreen init                 # hooks in ./.claude/settings.json, skill in ./.claude/skills/sidescreen/
-sidescreen serve --open         # opens this project's page on http://127.0.0.1:7486/
+sidescreen init               # hooks in ./.claude/settings.json, skill in ./.claude/skills/sidescreen/
+sidescreen serve --open       # opens this project's page on http://127.0.0.1:7486/
 ```
 
 Claude Code reads hooks when it starts, so restart any session already open in that project.
 To register the hook for every project instead, run `sidescreen setup hooks`, which edits `~/.claude/settings.json`.
+
+The registered hook runs the installed `bin/sidescreen.js` by its absolute path.
+When a Node version manager moves the global install, for example after switching Node versions, run `sidescreen init` again so the hook follows it.
+Do not set up through `npx sidescreen init`: the hook would point into the npx cache, which can be evicted, and every turn would then fail its hook until `init` runs from a real install.
 
 Finish a turn in Claude Code.
 It shows up in the browser on its own.
@@ -107,6 +110,10 @@ All configuration is by environment variable.
 ## Development
 
 ```sh
+git clone https://github.com/johardi/sidescreen.git
+cd sidescreen
+npm install
+npm link                      # puts this checkout's `sidescreen` on your PATH, optional
 npm run check                 # lint, typecheck, tests
 SIDESCREEN_E2E_CLAUDE=1 npm test  # also runs the real `claude -p` hook test, which spends API credit
 UPDATE_SNAPSHOTS=1 npm test   # rewrites the markdown rendering snapshot

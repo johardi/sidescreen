@@ -2,8 +2,27 @@
   "name": "sidescreen",
   "version": "0.1.0",
   "description": "A second screen for coding-agent output: read a turn in the browser, annotate any range, ask a read-only sub-agent, carry back only your conclusions.",
-  "type": "module",
+  "keywords": [
+    "claude-code",
+    "coding-agent",
+    "agent-output",
+    "annotation",
+    "review",
+    "second-screen",
+    "hooks",
+    "sub-agent"
+  ],
+  "homepage": "https://github.com/johardi/sidescreen#readme",
+  "bugs": {
+    "url": "https://github.com/johardi/sidescreen/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/johardi/sidescreen.git"
+  },
   "license": "MIT",
+  "author": "Josef Hardi <josef.hardi@gmail.com> (https://github.com/johardi)",
+  "type": "module",
   "bin": {
     "sidescreen": "bin/sidescreen.js"
   },
@@ -19,7 +38,8 @@
     "test": "node --test 'test/**/*.test.js'",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "check": "npm run lint && npm run typecheck && npm test"
+    "check": "npm run lint && npm run typecheck && npm test",
+    "prepublishOnly": "npm run check"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
