@@ -19,6 +19,7 @@ import { turnsForSession } from '../store/turns.js';
  * @property {string} preview First line of the message as plain text.
  * @property {number} threadCount
  * @property {string} href The turn's pinned address.
+ * @property {boolean} removable Whether the turn may be removed: every turn but its session's newest.
  */
 
 /**
@@ -52,13 +53,14 @@ export function presentSidebar(state, project) {
     threadCounts.set(thread.promptId, (threadCounts.get(thread.promptId) ?? 0) + 1);
   }
   const sessions = sessionsIn(state, project.cwd).map((session) => {
-    const turns = turnsForSession(state, session.sessionId).map((turn) => ({
+    const turns = turnsForSession(state, session.sessionId).map((turn, index) => ({
       promptId: turn.promptId,
       sessionId: turn.sessionId,
       receivedAt: turn.receivedAt,
       preview: preview(turn.message),
       threadCount: threadCounts.get(turn.promptId) ?? 0,
       href: turnPath(project.id, turn.sessionId, turn.promptId),
+      removable: index > 0,
     }));
     return {
       sessionId: session.sessionId,

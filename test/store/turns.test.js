@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Store, emptyState } from '../../src/store/store.js';
-import { recordTurn, removeTurn, turnsForSession } from '../../src/store/turns.js';
+import { isNewestInSession, recordTurn, removeTurn, turnsForSession } from '../../src/store/turns.js';
 import { createThread } from '../../src/store/threads.js';
 import { addEntry } from '../../src/store/carry-back.js';
 import { sessionLabel, upsertSession } from '../../src/store/sessions.js';
@@ -72,6 +72,8 @@ test('a later turn of a known session takes the session\'s directory, and record
   assert.equal(state.turns.p2.model, 'claude-fable-5-1');
   assert.equal(state.sessions['session-1'].cwd, '/Users/example/proj', 'the session is unchanged');
   assert.equal(Object.keys(state.sessions).length, 1, 'no second session for the subdirectory');
+  assert.equal(isNewestInSession(state, state.turns.p2), true);
+  assert.equal(isNewestInSession(state, state.turns.p1), false);
 
   const fresh = await recordTurn(store, payload('q1', { sessionId: 'session-2', cwd: '/Users/example/proj/sub' }), { now: new Date('2026-03-01T11:00:00.000Z') });
   assert.equal(fresh.cwd, '/Users/example/proj/sub', 'a session\'s first turn sets its directory');

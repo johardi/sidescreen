@@ -2,11 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { isAllowedHost } from '../../src/web/server.js';
+import { NEWEST_TURN_ERROR, isAllowedHost } from '../../src/web/server.js';
 import { preview } from '../../src/web/page.js';
 import { createDispatch } from '../../src/dispatch/dispatch.js';
 import { READ_ONLY_CONFIG } from '../../src/dispatch/codex-adapter.js';
 import { EARLIER_HEADING, SINCE_HEADING } from '../../src/dispatch/dispatch-prompt.js';
+import { upsertSession } from '../../src/store/sessions.js';
 import { Store } from '../../src/store/store.js';
 import { FIXTURES, tempDir } from '../helpers.js';
 import { rawRequest, sampleTurn, startServer, turnHref, waitForAnswer } from '../server-helpers.js';
@@ -218,11 +219,12 @@ test('DELETE removes a turn and its threads behind the same-origin check, and sa
   assert.equal(state.carryBack['session-1'].length, 1, 'carry-back survives');
   assert.equal((await fetch(new URL(turnHref(turns[0]), url))).status, 404, 'the removed turn\'s address answers not found');
 
-  const last = await (await fetch(new URL('/api/turns/prompt-2', url), { method: 'DELETE' })).json();
-  assert.equal(last.removed.sessionRemoved, true);
-  assert.equal(last.next, '/', 'with no turn left in the project, the landing page is next');
+  const newest = await fetch(new URL('/api/turns/prompt-2', url), { method: 'DELETE' });
+  assert.equal(newest.status, 409, "a session's newest turn cannot be removed");
+  assert.equal((await newest.json()).error, NEWEST_TURN_ERROR);
   state = await store.read();
-  assert.equal(state.sessions['session-1'], undefined);
+  assert.ok(state.turns['prompt-2'], 'the newest turn remains');
+  assert.ok(state.sessions['session-1'], 'and so does its session');
   assert.equal(state.carryBack['session-1'].length, 1);
 });
 
@@ -754,6 +756,41 @@ test('5.2 thread and turn responses carry the backend and the model', async (t) 
   const turnPage = await (await fetch(new URL('/api/turns/prompt-1', url))).json();
   assert.equal(turnPage.turn.model, 'claude-fable-5-1');
   assert.equal(turnPage.threads[0].exchanges[0].backend, 'claude');
+});
+
+// ---- 5.3: only past turns can be removed --------------------------------------------------
+
+test('5.3 the newest turn of a session is refused, an older one is removed, and a turn becomes removable once a newer one arrives', async (t) => {
+  const older = sampleTurn({ promptId: 'older', receivedAt: '2026-01-01T00:00:00.000Z' });
+  const newer = sampleTurn({ promptId: 'newer', receivedAt: '2026-01-02T00:00:00.000Z' });
+  const { url, store } = await startServer(t, { turns: [older, newer] });
+  const project = projectId(older.cwd);
+
+  const refused = await fetch(new URL('/api/turns/newer', url), { method: 'DELETE' });
+  assert.equal(refused.status, 409);
+  assert.equal((await refused.json()).error, NEWEST_TURN_ERROR);
+  assert.ok((await store.read()).turns.newer, 'still there');
+
+  let sidebar = await (await fetch(new URL(`/api/projects/${project}`, url))).json();
+  assert.deepEqual(sidebar.sessions[0].turns.map((/** @type {{ promptId: string, removable: boolean }} */ turn) => [turn.promptId, turn.removable]), [['newer', false], ['older', true]]);
+  const newestRow = /<li class="turn-row" data-prompt-id="newer"[\s\S]*?<\/li>/.exec(sidebar.sidebarHtml)?.[0] ?? '';
+  const olderRow = /<li class="turn-row" data-prompt-id="older"[\s\S]*?<\/li>/.exec(sidebar.sidebarHtml)?.[0] ?? '';
+  assert.doesNotMatch(newestRow, /turn-remove/, 'no remove control on the newest row');
+  assert.match(olderRow, /turn-remove/);
+
+  const removed = await fetch(new URL('/api/turns/older', url), { method: 'DELETE' });
+  assert.equal(removed.status, 200);
+  assert.equal((await removed.json()).next, `/projects/${project}`);
+
+  const newest = sampleTurn({ promptId: 'newest', receivedAt: '2026-01-03T00:00:00.000Z' });
+  await store.update((state) => {
+    state.turns[newest.promptId] = newest;
+    upsertSession(state, newest);
+  });
+  sidebar = await (await fetch(new URL(`/api/projects/${project}`, url))).json();
+  assert.deepEqual(sidebar.sessions[0].turns.map((/** @type {{ promptId: string, removable: boolean }} */ turn) => [turn.promptId, turn.removable]), [['newest', false], ['newer', true]]);
+  assert.equal((await fetch(new URL('/api/turns/newer', url), { method: 'DELETE' })).status, 200, 'removable now that a newer turn exists');
+  assert.equal((await fetch(new URL('/api/turns/newest', url), { method: 'DELETE' })).status, 409);
 });
 
 // ---- 6.2: a turn's addresses come from its session ----------------------------------------------

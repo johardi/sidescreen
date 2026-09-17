@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { renderMarkdown } from './render-markdown.js';
 import { renderErrorPage, renderLandingPage, renderSidebar, renderWorkspacePage } from './page.js';
-import { listTurns, removeTurn, turnsForSession } from '../store/turns.js';
+import { isNewestInSession, listTurns, removeTurn, turnsForSession } from '../store/turns.js';
 import { findProject, listProjects, projectId, projectPath, sessionPath, turnPath } from '../store/projects.js';
 import { sessionsIn } from '../store/sessions.js';
 import { presentSidebar } from './sidebar.js';
@@ -49,6 +49,9 @@ import { isAnswered, routeQuestion } from '../dispatch/route.js';
  */
 
 /** @typedef {import('../dispatch/route.js').Route} Route */
+
+/** The message a client gets for trying to remove a session's newest turn. */
+export const NEWEST_TURN_ERROR = "Only past turns can be removed. A session's newest turn stays.";
 
 /** @typedef {(input: DispatchInput) => Promise<DispatchResult>} Dispatch */
 
@@ -368,10 +371,11 @@ export class SidescreenServer {
   }
 
   /**
-   * Remove a turn and the threads anchored in it. Carry-back stays. The
-   * response says where the page should go if it was showing that turn:
-   * the project's follow address, or the landing page once the project has
-   * no turn left to show.
+   * Remove a past turn and the threads anchored in it. Carry-back stays. A
+   * session's newest turn is refused, so a session never leaves the sidebar
+   * through removal. The response says where the page should go if it was
+   * showing that turn: the project's follow address, or the landing page
+   * should the project have no turn left to show.
    *
    * @param {http.IncomingMessage} req
    * @param {http.ServerResponse} res
@@ -379,13 +383,21 @@ export class SidescreenServer {
    */
   async #apiRemoveTurn(req, res, promptId) {
     if (!this.#assertSameOrigin(req, res)) return;
+    const before = await this.store.read();
+    const candidate = before.turns[promptId];
+    if (candidate && isNewestInSession(before, candidate)) {
+      sendJson(res, 409, { error: NEWEST_TURN_ERROR });
+      return;
+    }
     /** @type {import('../store/turns.js').RemovedTurn|null} */
     let removed = null;
     const state = await this.store.update((latest) => {
+      const turn = latest.turns[promptId];
+      if (!turn || isNewestInSession(latest, turn)) return;
       removed = removeTurn(latest, promptId);
     });
     if (removed === null) {
-      sendJson(res, 404, { error: 'Turn not found' });
+      sendJson(res, state.turns[promptId] ? 409 : 404, { error: state.turns[promptId] ? NEWEST_TURN_ERROR : 'Turn not found' });
       return;
     }
     const { turn, removedThreads, sessionRemoved } = /** @type {import('../store/turns.js').RemovedTurn} */ (removed);

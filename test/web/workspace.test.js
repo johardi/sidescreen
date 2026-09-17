@@ -268,7 +268,7 @@ test('4.3 removing a turn takes two clicks, names its threads, cancels on Escape
   assert.deepEqual(consoleErrors, []);
 });
 
-test('4.3 removing the turn on screen moves to the project\'s follow address, and removing a session\'s last turn drops the session', async (t) => {
+test('5.4 removing the past turn on screen moves to the project\'s follow address; a session\'s newest turn offers no remove control until a newer turn arrives', async (t) => {
   const turns = twoSessions();
   const { url, store } = await startServer(t, { turns });
   await fetch(new URL('/api/sessions/sess-b/carry-back', url), {
@@ -277,26 +277,38 @@ test('4.3 removing the turn on screen moves to the project\'s follow address, an
     body: JSON.stringify({ text: 'Keep this conclusion.' }),
   });
   const { page, consoleErrors } = await openBrowser(t);
-  await page.goto(new URL(turnHref(turns[3]), url).href);
+  await page.goto(new URL(turnHref(turns[1]), url).href);
   assert.equal(await page.locator('.carry-back-entry').count(), 1);
 
-  const row = page.locator('.turn-row[data-prompt-id="b2"]');
+  const newest = page.locator('.turn-row[data-prompt-id="b2"]');
+  await newest.hover();
+  assert.equal(await newest.locator('.turn-remove').count(), 0, 'the newest turn of a session has no remove control');
+  const olderInA = page.locator('.turn-row[data-prompt-id="a1"]');
+  await olderInA.hover();
+  assert.equal(await olderInA.locator('.turn-remove').count(), 1, 'an older turn does');
+
+  const row = page.locator('.turn-row[data-prompt-id="b1"]');
   await row.hover();
   await row.locator('.turn-remove').click();
   await row.locator('.turn-remove').click();
   await page.waitForURL(new URL(`/projects/${PROJECT}`, url).href);
-  assert.match((await page.locator('#document').textContent()) ?? '', /A two/, 'the project\'s newest remaining turn');
-  assert.equal(await page.locator('.turn-row[data-prompt-id="b2"]').count(), 0);
-
-  const last = page.locator('.turn-row[data-prompt-id="b1"]');
-  await last.hover();
-  await last.locator('.turn-remove').click();
-  await last.locator('.turn-remove').click();
-  await page.locator('.session[data-session-id="sess-b"]').waitFor({ state: 'detached', timeout: 5_000 });
-  assert.equal(await page.locator('.session').count(), 1, 'the session left the sidebar with its last turn');
-  const state = await store.read();
-  assert.equal(state.sessions['sess-b'], undefined);
+  assert.match((await page.locator('#document').textContent()) ?? '', /B two/, 'the project\'s newest turn');
+  assert.equal(await page.locator('.turn-row[data-prompt-id="b1"]').count(), 0);
+  assert.equal(await page.locator('.session[data-session-id="sess-b"] .session-count').textContent(), '1 turn');
+  assert.equal(await page.locator('.turn-row[data-prompt-id="b2"] .turn-remove').count(), 0, 'still the newest, still not removable');
+  let state = await store.read();
+  assert.ok(state.sessions['sess-b'], 'the session stays');
   assert.equal(state.carryBack['sess-b']?.length, 1, 'carry-back for the session survives');
+
+  // A newer turn arrives: the previous newest becomes removable without a reload.
+  await mark(page);
+  await arrive(store, sampleTurn({ promptId: 'b3', sessionId: 'sess-b', receivedAt: '2026-01-01T02:00:00.000Z', message: 'B three, just in.' }));
+  await page.locator('.turn-row[data-prompt-id="b3"]').waitFor({ timeout: 5_000 });
+  await page.locator('.turn-row[data-prompt-id="b2"] .turn-remove').waitFor({ state: 'attached', timeout: 5_000 });
+  assert.equal(await page.locator('.turn-row[data-prompt-id="b3"] .turn-remove').count(), 0, 'the new newest has none');
+  // The project page follows the newest turn, so it reloaded to show b3; the sidebar state is what matters here.
+  state = await store.read();
+  assert.ok(state.turns.b2);
   assert.deepEqual(consoleErrors, []);
 });
 
@@ -334,15 +346,15 @@ test('5.2 a version 1 store opens in the workspace with its threads and carry-ba
   assert.equal(await page.locator('.thread .question').textContent(), 'Why quick?');
   assert.deepEqual(await page.locator('.carry-back-entry-text').allTextContents(), ['Carried from before.']);
 
+  assert.equal(await page.locator(`.turn-row[data-prompt-id="${turn.promptId}"] .turn-remove`).count(), 0, 'the newest turn cannot be removed');
   assert.equal(await page.locator('.thread .answer-by').textContent(), 'CODEX answered:', 'an answer from before backends were recorded was Codex');
-  const row = page.locator(`.turn-row[data-prompt-id="${turn.promptId}"]`);
+  const row = page.locator('.turn-row[data-prompt-id="older"]');
   await row.hover();
   await row.locator('.turn-remove').click();
-  assert.equal(await row.locator('.turn-remove').textContent(), 'Remove turn and 1 thread?');
+  assert.equal(await row.locator('.turn-remove').textContent(), 'Remove turn?');
   await row.locator('.turn-remove').click();
-  await page.waitForURL(new URL(`/projects/${PROJECT}`, url).href);
-  await page.locator('#document', { hasText: 'Older turn.' }).waitFor();
-  assert.equal(await page.locator('#document mark[data-sidescreen-mark]').count(), 0);
+  await row.waitFor({ state: 'detached', timeout: 5_000 });
+  assert.equal(await page.locator('#document mark[data-sidescreen-mark]').count(), 1, 'the turn on screen and its thread are untouched');
   assert.deepEqual(await page.locator('.carry-back-entry-text').allTextContents(), ['Carried from before.'], 'carry-back is still owed to the terminal');
   assert.deepEqual(consoleErrors, []);
 });

@@ -185,7 +185,7 @@ export function renderSidebar({ sidebar, scope, activePromptId }) {
           <span class="turn-preview">${escapeHtml(turn.preview)}</span>
           ${turn.threadCount > 0 ? `<span class="turn-threads" title="${turn.threadCount} ${turn.threadCount === 1 ? 'thread' : 'threads'}">${turn.threadCount}</span>` : ''}
         </a>
-        <button type="button" class="turn-remove" aria-label="Remove this turn">×</button>
+        ${turn.removable ? '<button type="button" class="turn-remove" aria-label="Remove this turn">×</button>' : ''}
       </li>`;
         })
         .join('\n');

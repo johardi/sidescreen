@@ -70,6 +70,16 @@ export function turnsForSession(state, sessionId) {
 }
 
 /**
+ * Whether a turn is its session's newest, and so not removable.
+ *
+ * @param {State} state
+ * @param {Turn} turn
+ */
+export function isNewestInSession(state, turn) {
+  return turnsForSession(state, turn.sessionId)[0]?.promptId === turn.promptId;
+}
+
+/**
  * @typedef {object} RemovedTurn
  * @property {Turn} turn
  * @property {number} removedThreads How many threads went with it.
