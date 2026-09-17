@@ -23,6 +23,9 @@ The same change makes the package publishable: today it has no license file, no 
 - **Existing OpenSpec specs and archived changes are left as written.**
   The live `agent-output-review` spec names the tool in two scenarios and the archived changes name it throughout.
   Both are records of the project as it was, and renaming them would rewrite history without changing behaviour.
+- **Source and tests are grouped by module.**
+  `src/` gains `hooks/`, `store/`, `dispatch/`, and `web/`, with the entry point and cross-cutting helpers at the root, and `test/` mirrors the same four directories.
+  Files move; none is split, renamed, or changed in behaviour.
 
 ## Capabilities
 
@@ -48,6 +51,7 @@ Affected code and files:
 - `src/page.js`, `src/public/anchor.js`, `src/public/app.js`, `src/public/app.css`, `src/public/workspace.js`: title, brand, empty-state and warning text, the `data-sidescreen-mark` attribute, and the `sidescreen:collapsed:` storage key.
 - `test/**`: the bin path, temporary directory prefixes, environment variable names, output assertions, the opt-in `SIDESCREEN_E2E_CLAUDE` switch, and the markdown fixture pair, whose rendered snapshot is regenerated.
 - `README.md`: the name throughout, the install path, and the configuration table.
+- `src/**` and `test/**`: every module moves into its domain directory and every relative import follows; the eslint browser-globals glob follows `public/`.
 
 Unchanged surfaces:
 

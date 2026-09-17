@@ -31,3 +31,8 @@
 - [x] 5.2 Run `npm run check` and verify lint, typecheck, and every test pass
 - [x] 5.3 Run `npm pack --dry-run` and verify the tarball is named `sidescreen-0.1.0.tgz`, lists `bin/sidescreen.js`, `skills/sidescreen/SKILL.md`, `LICENSE`, `README.md`, and `src/**`, and lists nothing from `test/`, `openspec/`, `.claude/`, or `.agents/`
 - [x] 5.4 Run `npm pack`, install the tarball globally with `npm install -g ./sidescreen-0.1.0.tgz`, and in a scratch directory run `sidescreen --version`, `sidescreen init --dry-run`, and `sidescreen --help`; verify the version is `0.1.0`, the dry run names a hook command under the global install path and the skill `sidescreen/SKILL.md`, then uninstall with `npm uninstall -g sidescreen` and delete the tarball
+
+## 6. Source layout
+
+- [x] 6.1 Move `src/` modules into `hooks/`, `store/`, `dispatch/`, and `web/` with `git mv`, keeping `cli.js`, `version.js`, `types.js`, and `format.js` at the root, and rewrite every relative import, JSDoc import type, and `new URL` path from one mapping; verify that `npm run typecheck` and `npm run lint` pass and that `git diff --stat -M` reports renames rather than deletions
+- [x] 6.2 Move `test/` files into the mirrored `hooks/`, `store/`, `dispatch/`, `web/`, and `e2e/` directories, keeping the shared helpers, `cli.test.js`, and `fixtures/` at the root, and point the ingest guard test at modules by path; verify that `npm test` runs the same number of tests as before the move and all pass

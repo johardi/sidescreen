@@ -95,6 +95,30 @@ Alternative considered: register `sidescreen ingest` and rely on PATH.
 Rejected for now because Claude Code runs hooks in a shell whose PATH does not always include a version manager's global bin directory, and a hook that silently finds no command is worse than one whose path can be seen and fixed.
 `npx` is discouraged in the README for the reason given in the spec: its cache is evictable, so the hook path dies without warning.
 
+### Source and tests are grouped by module
+
+The import graph separates into four domains with no cycles, so each becomes a directory:
+
+```
+src/
+  cli.js  version.js  types.js  format.js     entry point and cross-cutting helpers
+  hooks/      hook-payload  ingest  session-title  setup-hooks  init
+  store/      store  mutex  sessions  turns  threads  projects  carry-back
+  dispatch/   dispatch  dispatch-prompt  conventions  answer-schema.json
+  web/        server  page  sidebar  render-markdown  public/
+test/
+  cli.test.js  helpers.js  server-helpers.js  browser-helpers.js  fixtures/
+  hooks/  store/  dispatch/  web/  e2e/
+```
+
+Dependencies point one way: `web` uses `store` and `hooks`, `hooks` uses `store`, `dispatch` stands alone, and `store` uses only the root helpers.
+`format.js` stays at the root because both `store` and `web` need it, and moving it into either would point a dependency the wrong way.
+`carry-back.js` lives in `store` because its entries are a store record; its CLI command belongs to a hook and could split out later.
+The browser code stays under `web/public/` and is still served from the directory beside `server.js`, so `PUBLIC_DIR` does not change.
+Alternative considered: leaving `src/` flat.
+At 32 files the flat listing no longer shows which files belong together, and every new file would face the same question.
+Files are moved with `git mv` and imports are rewritten mechanically from one mapping, so the diff is renames plus import lines and nothing else.
+
 ## Risks / Trade-offs
 
 - [The author's projects keep `annotatr` hooks that fail on every turn once the bin is renamed] → The migration plan re-runs `init` and deletes the old entries per project, and Claude Code reports a failing hook in the session, so a missed project shows itself on the first turn.
