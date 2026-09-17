@@ -5,7 +5,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FIXTURES, tempDir } from '../helpers.js';
@@ -13,6 +13,8 @@ import { sampleTurn } from '../server-helpers.js';
 import { ANSWER_SCHEMA_PATH, dispatchQuestion, sessionNameFor } from '../../src/dispatch/dispatch.js';
 import { READ_ONLY_TOOLS, RESTRICTED_ARGS, buildClaudeCommand, parseClaudeResult } from '../../src/dispatch/claude-adapter.js';
 import { createThread } from '../../src/store/threads.js';
+import { Store } from '../../src/store/store.js';
+import { recordTurn } from '../../src/store/turns.js';
 
 const STUB_CLAUDE = join(FIXTURES, 'stub-claude.js');
 const STUB_CODEX = join(FIXTURES, 'stub-codex.js');
@@ -255,3 +257,28 @@ test('2.5 the same question yields byte-identical prompts on both backends, and 
   }
 });
 
+// ---- 6.3: the sub-agent starts in the project root ---------------------------------
+
+test('6.3 a turn ingested while the shell sat in a subdirectory still starts its sub-agent in the session\'s directory', async (t) => {
+  const dir = await tempDir(t);
+  const project = await realpath(await tempDir(t, 'sidescreen-project-'));
+  const store = new Store(join(dir, 'state'));
+  const payload = (/** @type {string} */ promptId, /** @type {string} */ cwd) => ({
+    lastAssistantMessage: `message ${promptId}`,
+    sessionId: 'sess-1',
+    promptId,
+    cwd,
+    transcriptPath: null,
+    stopHookActive: false,
+  });
+  await recordTurn(store, payload('p1', project));
+  const moved = await recordTurn(store, payload('p2', join(project, 'openspec', 'changes', 'x')));
+  assert.equal(moved.cwd, project);
+
+  const logPath = join(dir, 'claude.log');
+  const input = fixture(dir, 'claude', 'q', { STUB_CLAUDE_LOG_TO: logPath }, {});
+  const result = await dispatchQuestion({ ...input, turn: moved, conventions: '' });
+  assert.ok(result.ok, JSON.stringify(result));
+  const [entry] = (await readFile(logPath, 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+  assert.equal(await realpath(entry.cwd), project, 'the sub-agent ran in the project root, not the subdirectory');
+});

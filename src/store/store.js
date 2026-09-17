@@ -9,7 +9,8 @@
  * Schema history:
  * - Version 2 added the `sessions` record.
  * - Version 3 added `model` to turns and `backend` and `model` to exchanges,
- *   and dropped the thread-level copy of the sub-agent session id.
+ *   made a turn's directory its session's, and dropped the thread-level copy
+ *   of the sub-agent session id.
  *
  * An older file is read as is and upgraded in memory, and is copied to a
  * backup once before the first write at the current version, so rolling back
@@ -180,6 +181,8 @@ function normalize(parsed, path) {
 function upgrade(state) {
   for (const turn of Object.values(state.turns)) {
     if (turn.model === undefined) turn.model = null;
+    const session = state.sessions[turn.sessionId];
+    if (session && turn.cwd !== session.cwd) turn.cwd = session.cwd;
   }
   for (const thread of Object.values(state.threads)) {
     delete (/** @type {Record<string, unknown>} */ (/** @type {unknown} */ (thread))).subAgentSessionId;

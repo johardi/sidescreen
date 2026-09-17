@@ -4,7 +4,7 @@
  * @typedef {object} Turn One completed agent turn, as received from the Stop hook.
  * @property {string} promptId Stable identifier of the turn, from the hook payload.
  * @property {string} sessionId Harness session the turn belongs to.
- * @property {string} cwd Project directory the turn ran in.
+ * @property {string} cwd Project directory of the turn's session. The hook's own directory follows the agent's shell, so a turn of a known session takes the session's.
  * @property {string|null} transcriptPath Path to the harness transcript, if the hook supplied one.
  * @property {string} message The turn's final assistant message, verbatim.
  * @property {string|null} model The model that produced the turn, as the transcript names it, or null when the transcript had not named it at ingest.

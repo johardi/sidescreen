@@ -756,3 +756,31 @@ test('5.2 thread and turn responses carry the backend and the model', async (t) 
   assert.equal(turnPage.threads[0].exchanges[0].backend, 'claude');
 });
 
+// ---- 6.2: a turn's addresses come from its session ----------------------------------------------
+
+test('6.2 a turn ingested from a subdirectory lives under its session\'s project: the sidebar link renders, the legacy link redirects there, and it is the project\'s newest', async (t) => {
+  const first = sampleTurn({ promptId: 'first', receivedAt: '2026-01-01T00:00:00.000Z', message: 'First turn.' });
+  const moved = sampleTurn({ promptId: 'moved', receivedAt: '2026-01-02T00:00:00.000Z', message: 'Moved turn.', cwd: '/Users/example/proj/openspec/changes/x' });
+  const { url, port, store } = await startServer(t, { turns: [first, moved] });
+  const project = projectId(first.cwd);
+
+  const state = await store.read();
+  assert.equal(state.turns.moved.cwd, first.cwd, 'the store holds the session\'s directory for the turn');
+  assert.equal(Object.keys(state.sessions).length, 1, 'no second session for the subdirectory');
+
+  const sidebar = await (await fetch(new URL(`/api/projects/${project}`, url))).json();
+  const link = sidebar.sessions[0].turns.find((/** @type {{ promptId: string }} */ turn) => turn.promptId === 'moved').href;
+  assert.equal(link, `/projects/${project}/sessions/session-1/turns/moved`);
+  const page = await rawRequest({ port, path: link });
+  assert.equal(page.status, 200, 'no redirect, no not-found');
+  assert.match(page.body, /Moved turn\./);
+
+  const legacy = await rawRequest({ port, path: '/turns/moved' });
+  assert.equal(legacy.status, 302);
+  assert.equal(legacy.headers.location, link);
+
+  const projectPage = await (await fetch(new URL(`/projects/${project}`, url))).text();
+  assert.match(projectPage, /<p>Moved turn\.<\/p>/, 'the project page shows it as the newest turn');
+  assert.equal((await fetch(new URL(`/projects/${projectId(moved.cwd)}`, url))).status, 404, 'the subdirectory is not a project');
+  assert.doesNotMatch(projectPage, /Project not found/);
+});

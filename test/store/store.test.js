@@ -125,7 +125,7 @@ test('a store with an unknown version is refused', async (t) => {
   await assert.rejects(new Store(stateDir).read(), /unsupported version 4/);
 });
 
-test('a version 2 store is upgraded on read: models null, old exchanges stamped codex, and backed up once on the first write', async (t) => {
+test('a version 2 store is upgraded on read: models null, old exchanges stamped codex, turn directories repaired, and backed up once on the first write', async (t) => {
   const stateDir = await tempDir(t);
   const turn = (/** @type {string} */ promptId, /** @type {string} */ sessionId, /** @type {string} */ receivedAt, cwd = '/Users/example/proj') => ({
     promptId,
@@ -149,7 +149,7 @@ test('a version 2 store is upgraded on read: models null, old exchanges stamped 
     version: 2,
     turns: {
       a1: turn('a1', 'sess-a', '2026-01-01T00:00:00.000Z'),
-      a2: turn('a2', 'sess-a', '2026-01-02T00:00:00.000Z'),
+      a2: turn('a2', 'sess-a', '2026-01-02T00:00:00.000Z', '/Users/example/proj/openspec/changes/x'),
     },
     sessions: {
       'sess-a': { sessionId: 'sess-a', cwd: '/Users/example/proj', transcriptPath: '/t/sess-a.jsonl', title: 'T', startedAt: '2026-01-01T00:00:00.000Z', lastTurnAt: '2026-01-02T00:00:00.000Z' },
@@ -178,6 +178,8 @@ test('a version 2 store is upgraded on read: models null, old exchanges stamped 
   assert.equal(state.version, 3);
   assert.equal(state.turns.a1.model, null);
   assert.equal(state.turns.a2.model, null);
+  assert.equal(state.turns.a2.cwd, '/Users/example/proj', 'a turn stored under a subdirectory takes its session\'s directory');
+  assert.equal(state.turns.a1.cwd, '/Users/example/proj');
   const [first, second] = state.threads.th.exchanges;
   assert.equal(first.backend, 'codex', 'every session that existed before was minted by Codex');
   assert.equal(first.model, null);
@@ -193,6 +195,7 @@ test('a version 2 store is upgraded on read: models null, old exchanges stamped 
   const written = JSON.parse(await readFile(join(stateDir, 'store.json'), 'utf8'));
   assert.equal(written.version, 3);
   assert.equal(written.threads.th.exchanges[0].backend, 'codex');
+  assert.equal(written.turns.a2.cwd, '/Users/example/proj');
 
   await store.update((latest) => {
     latest.turns.a3 = { ...turn('a3', 'sess-a', '2026-01-03T00:00:00.000Z'), model: 'claude-fable-5-1' };

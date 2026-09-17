@@ -27,6 +27,11 @@ export function turnFromPayload(payload, { model = null, now = new Date() } = {}
  * Store a turn, replacing any earlier turn with the same promptId, and record
  * it against its session.
  *
+ * The hook's working directory follows the agent's shell, so a turn of a
+ * session already known takes the session's directory: that is the project,
+ * and it is what every consumer of the directory wants. A session's first
+ * turn sets it.
+ *
  * @param {import('./store.js').Store} store
  * @param {StopHookPayload} payload
  * @param {{ title?: string|null, model?: string|null, now?: Date }} [options] The labels the caller read from the transcript, when found.
@@ -35,6 +40,8 @@ export function turnFromPayload(payload, { model = null, now = new Date() } = {}
 export async function recordTurn(store, payload, { title = null, model = null, now = new Date() } = {}) {
   const turn = turnFromPayload(payload, { model, now });
   await store.update((state) => {
+    const session = state.sessions[turn.sessionId];
+    if (session) turn.cwd = session.cwd;
     state.turns[turn.promptId] = turn;
     upsertSession(state, turn, title);
   });

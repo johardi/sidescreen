@@ -16,6 +16,7 @@ import { renderMarkdown } from './render-markdown.js';
 import { renderErrorPage, renderLandingPage, renderSidebar, renderWorkspacePage } from './page.js';
 import { listTurns, removeTurn, turnsForSession } from '../store/turns.js';
 import { findProject, listProjects, projectId, projectPath, sessionPath, turnPath } from '../store/projects.js';
+import { sessionsIn } from '../store/sessions.js';
 import { presentSidebar } from './sidebar.js';
 import { createThread, createExchange, lineageOf, listThreadsForTurn, validateAnchor } from '../store/threads.js';
 import { isIngestHookRegistered } from '../hooks/setup-hooks.js';
@@ -282,7 +283,7 @@ export class SidescreenServer {
         sendHtml(res, 404, renderErrorPage('Turn not found', 'No turn with that id has been ingested, or it has been removed.'));
         return;
       }
-      const canonical = turnPath(projectId(turn.cwd), turn.sessionId, turn.promptId);
+      const canonical = turnPath(projectId(turnProjectCwd(state, turn)), turn.sessionId, turn.promptId);
       if (canonical !== requestPath) {
         sendRedirect(res, canonical);
         return;
@@ -302,7 +303,8 @@ export class SidescreenServer {
       turn = turnsForSession(state, session.sessionId)[0] ?? null;
       scope = { kind: 'session', sessionId: session.sessionId };
     } else {
-      turn = listTurns(state).find((candidate) => candidate.cwd === project.cwd) ?? null;
+      const sessionIds = new Set(sessionsIn(state, project.cwd).map((session) => session.sessionId));
+      turn = listTurns(state).find((candidate) => sessionIds.has(candidate.sessionId)) ?? null;
     }
 
     sendHtml(
@@ -334,7 +336,7 @@ export class SidescreenServer {
       sendHtml(res, 404, renderErrorPage('Turn not found', 'No turn with that id has been ingested, or it has been removed.'));
       return;
     }
-    sendRedirect(res, turnPath(projectId(turn.cwd), turn.sessionId, turn.promptId));
+    sendRedirect(res, turnPath(projectId(turnProjectCwd(state, turn)), turn.sessionId, turn.promptId));
   }
 
   /** @param {http.ServerResponse} res */
@@ -387,7 +389,7 @@ export class SidescreenServer {
       return;
     }
     const { turn, removedThreads, sessionRemoved } = /** @type {import('../store/turns.js').RemovedTurn} */ (removed);
-    const id = projectId(turn.cwd);
+    const id = projectId(turnProjectCwd(state, turn));
     const projectRemains = findProject(state, id, [this.cwd]) !== null;
     this.broadcast({ type: 'turn-removed', promptId, sessionId: turn.sessionId, projectId: id, removedThreads, sessionRemoved });
     sendJson(res, 200, {
@@ -810,6 +812,18 @@ export class SidescreenServer {
   async #ingestionAvailable(cwd) {
     return isIngestHookRegistered({ env: this.env, cwd });
   }
+}
+
+/**
+ * The directory a turn's project is derived from: its session's, since the
+ * hook's own directory follows the agent's shell. A turn without a session
+ * record falls back to its own.
+ *
+ * @param {State} state
+ * @param {Turn} turn
+ */
+export function turnProjectCwd(state, turn) {
+  return state.sessions[turn.sessionId]?.cwd ?? turn.cwd;
 }
 
 /**

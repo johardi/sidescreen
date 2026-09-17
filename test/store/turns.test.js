@@ -58,6 +58,25 @@ test('the first turn of a session creates it, labelled by its start time until a
   );
 });
 
+test('a later turn of a known session takes the session\'s directory, and records the model the caller read', async (t) => {
+  const store = new Store(await tempDir(t));
+  await recordTurn(store, payload('p1'), { now: new Date('2026-03-01T10:00:00.000Z') });
+  const moved = await recordTurn(store, payload('p2', { cwd: '/Users/example/proj/openspec/changes/x' }), {
+    model: 'claude-fable-5-1',
+    now: new Date('2026-03-01T10:05:00.000Z'),
+  });
+  assert.equal(moved.cwd, '/Users/example/proj', 'the hook\'s directory followed the shell; the turn takes the session\'s');
+  assert.equal(moved.model, 'claude-fable-5-1');
+  const state = await store.read();
+  assert.equal(state.turns.p2.cwd, '/Users/example/proj');
+  assert.equal(state.turns.p2.model, 'claude-fable-5-1');
+  assert.equal(state.sessions['session-1'].cwd, '/Users/example/proj', 'the session is unchanged');
+  assert.equal(Object.keys(state.sessions).length, 1, 'no second session for the subdirectory');
+
+  const fresh = await recordTurn(store, payload('q1', { sessionId: 'session-2', cwd: '/Users/example/proj/sub' }), { now: new Date('2026-03-01T11:00:00.000Z') });
+  assert.equal(fresh.cwd, '/Users/example/proj/sub', 'a session\'s first turn sets its directory');
+});
+
 test('removing a turn takes its threads, keeps carry-back, and drops the session with its last turn', () => {
   const state = emptyState();
   const t1 = sampleTurn({ promptId: 't1', receivedAt: '2026-01-01T00:00:00.000Z' });
