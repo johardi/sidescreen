@@ -1,14 +1,14 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { VERSION } from './version.js';
-import { ingest } from './ingest.js';
-import { carryBackCommand } from './carry-back.js';
-import { init } from './init.js';
-import { defaultSettingsPath, projectSettingsPath, setupHooks } from './setup-hooks.js';
-import { Store, defaultStateDir } from './store.js';
-import { DEFAULT_PORT, createServer } from './server.js';
-import { projectId, projectPath } from './projects.js';
-import { createCodexDispatch, dispatchSettings } from './dispatch.js';
+import { ingest } from './hooks/ingest.js';
+import { carryBackCommand } from './store/carry-back.js';
+import { init } from './hooks/init.js';
+import { defaultSettingsPath, projectSettingsPath, setupHooks } from './hooks/setup-hooks.js';
+import { Store, defaultStateDir } from './store/store.js';
+import { DEFAULT_PORT, createServer } from './web/server.js';
+import { projectId, projectPath } from './store/projects.js';
+import { createCodexDispatch, dispatchSettings } from './dispatch/dispatch.js';
 
 /**
  * @typedef {object} CliIo

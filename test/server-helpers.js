@@ -1,9 +1,9 @@
 import http from 'node:http';
-import { Store } from '../src/store.js';
-import { createServer } from '../src/server.js';
-import { turnFromPayload } from '../src/turns.js';
-import { upsertSession } from '../src/sessions.js';
-import { projectId, turnPath } from '../src/projects.js';
+import { Store } from '../src/store/store.js';
+import { createServer } from '../src/web/server.js';
+import { turnFromPayload } from '../src/store/turns.js';
+import { upsertSession } from '../src/store/sessions.js';
+import { projectId, turnPath } from '../src/store/projects.js';
 import { tempDir } from './helpers.js';
 
 /**
@@ -30,7 +30,7 @@ export function sampleTurn(overrides = {}) {
  * Start a server on an ephemeral port with a fresh store, torn down after the test.
  *
  * @param {import('node:test').TestContext} t
- * @param {{ dispatch?: import('../src/server.js').Dispatch, turns?: import('../src/types.js').Turn[], env?: NodeJS.ProcessEnv, stateDir?: string }} [options]
+ * @param {{ dispatch?: import('../src/web/server.js').Dispatch, turns?: import('../src/types.js').Turn[], env?: NodeJS.ProcessEnv, stateDir?: string }} [options]
  */
 export async function startServer(t, { dispatch, turns = [sampleTurn()], env = { HOME: '/nonexistent' }, stateDir: givenStateDir } = {}) {
   const stateDir = givenStateDir ?? (await tempDir(t, 'sidescreen-server-'));

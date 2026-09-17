@@ -28,8 +28,8 @@
  * @property {2} version Schema version.
  * @property {Record<string, Turn>} turns Turns keyed by promptId.
  * @property {Record<string, Session>} sessions Sessions keyed by sessionId.
- * @property {Record<string, import('./threads.js').Thread>} threads Threads keyed by thread id.
- * @property {Record<string, import('./carry-back.js').CarryBackEntry[]>} carryBack Carry-back entries keyed by sessionId.
+ * @property {Record<string, import('./store/threads.js').Thread>} threads Threads keyed by thread id.
+ * @property {Record<string, import('./store/carry-back.js').CarryBackEntry[]>} carryBack Carry-back entries keyed by sessionId.
  */
 
 export {};

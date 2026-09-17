@@ -6,7 +6,7 @@ import { readFile, realpath } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { projectUrl } from '../src/cli.js';
-import { projectId } from '../src/projects.js';
+import { projectId } from '../src/store/projects.js';
 import { startServer } from './server-helpers.js';
 import { runCli, tempDir } from './helpers.js';
 
