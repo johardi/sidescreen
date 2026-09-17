@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { FIXTURES, runCli, tempDir } from './helpers.js';
 import { Store } from '../src/store.js';
 import { addEntry, EMISSION_HEADER } from '../src/carry-back.js';
-import { hookCommand, isAnnotatrHookCommand } from '../src/setup-hooks.js';
+import { hookCommand, isSidescreenHookCommand } from '../src/setup-hooks.js';
 import { BIN } from './helpers.js';
 import { startServer, waitForAnswer } from './server-helpers.js';
 
@@ -26,7 +26,7 @@ test('6.2 --emit prints only the pending entries for the payload session, as pla
     addEntry(state, { sessionId: 'sess-a', text: 'Rename store.lock to store.lockdir.' });
     addEntry(state, { sessionId: 'sess-b', text: 'A conclusion from another session.' });
   });
-  const result = await runCli(['carry-back', '--emit'], { env: { ANNOTATR_STATE_DIR: stateDir }, input: promptSubmitPayload('sess-a') });
+  const result = await runCli(['carry-back', '--emit'], { env: { SIDESCREEN_STATE_DIR: stateDir }, input: promptSubmitPayload('sess-a') });
   assert.equal(result.code, 0, result.stderr);
   assert.equal(result.stderr, '');
   assert.equal(result.stdout, `${EMISSION_HEADER}\n- Keep the directory lock.\n- Rename store.lock to store.lockdir.\n`);
@@ -34,13 +34,13 @@ test('6.2 --emit prints only the pending entries for the payload session, as pla
 
 test('6.2 --emit prints nothing and exits 0 when the list is empty or the store does not exist yet', async (t) => {
   const stateDir = await tempDir(t);
-  const missing = await runCli(['carry-back', '--emit'], { env: { ANNOTATR_STATE_DIR: join(stateDir, 'never-created') }, input: promptSubmitPayload('sess-a') });
+  const missing = await runCli(['carry-back', '--emit'], { env: { SIDESCREEN_STATE_DIR: join(stateDir, 'never-created') }, input: promptSubmitPayload('sess-a') });
   assert.deepEqual(missing, { code: 0, stdout: '', stderr: '' });
 
   await new Store(stateDir).update((state) => {
     addEntry(state, { sessionId: 'sess-b', text: 'someone else' });
   });
-  const empty = await runCli(['carry-back', '--emit'], { env: { ANNOTATR_STATE_DIR: stateDir }, input: promptSubmitPayload('sess-a') });
+  const empty = await runCli(['carry-back', '--emit'], { env: { SIDESCREEN_STATE_DIR: stateDir }, input: promptSubmitPayload('sess-a') });
   assert.deepEqual(empty, { code: 0, stdout: '', stderr: '' });
 });
 
@@ -49,18 +49,18 @@ test('--session names the session when there is no hook payload; bad invocations
   await new Store(stateDir).update((state) => {
     addEntry(state, { sessionId: 'sess-a', text: 'By flag.' });
   });
-  const byFlag = await runCli(['carry-back', '--emit', '--session', 'sess-a'], { env: { ANNOTATR_STATE_DIR: stateDir } });
+  const byFlag = await runCli(['carry-back', '--emit', '--session', 'sess-a'], { env: { SIDESCREEN_STATE_DIR: stateDir } });
   assert.equal(byFlag.stdout, `${EMISSION_HEADER}\n- By flag.\n`);
 
-  const noEmit = await runCli(['carry-back'], { env: { ANNOTATR_STATE_DIR: stateDir } });
+  const noEmit = await runCli(['carry-back'], { env: { SIDESCREEN_STATE_DIR: stateDir } });
   assert.equal(noEmit.code, 1);
   assert.match(noEmit.stderr, /expected --emit/);
 
-  const noSession = await runCli(['carry-back', '--emit'], { env: { ANNOTATR_STATE_DIR: stateDir }, input: '' });
+  const noSession = await runCli(['carry-back', '--emit'], { env: { SIDESCREEN_STATE_DIR: stateDir }, input: '' });
   assert.equal(noSession.code, 1);
   assert.match(noSession.stderr, /no hook payload on stdin/);
 
-  const badPayload = await runCli(['carry-back', '--emit'], { env: { ANNOTATR_STATE_DIR: stateDir }, input: '{"prompt": "x"}' });
+  const badPayload = await runCli(['carry-back', '--emit'], { env: { SIDESCREEN_STATE_DIR: stateDir }, input: '{"prompt": "x"}' });
   assert.equal(badPayload.code, 1);
   assert.match(badPayload.stderr, /session_id/);
 });
@@ -76,7 +76,7 @@ test('6.3 setup hooks registers the UserPromptSubmit hook, once per event, howev
   for (const [event, subcommand] of [['Stop', 'ingest'], ['UserPromptSubmit', 'carry-back --emit']]) {
     const commands = settings.hooks[event].flatMap((/** @type {{ hooks: { command: string }[] }} */ group) => group.hooks.map((hook) => hook.command));
     assert.deepEqual(commands, [hookCommand(BIN, subcommand)], `${event} has exactly one entry`);
-    assert.ok(isAnnotatrHookCommand(commands[0], subcommand));
+    assert.ok(isSidescreenHookCommand(commands[0], subcommand));
   }
 });
 
@@ -85,7 +85,7 @@ test('6.4 emitted entries are not emitted again: the second emit prints nothing'
   await new Store(stateDir).update((state) => {
     addEntry(state, { sessionId: 'sess-a', text: 'Once only.' });
   });
-  const env = { ANNOTATR_STATE_DIR: stateDir };
+  const env = { SIDESCREEN_STATE_DIR: stateDir };
   const first = await runCli(['carry-back', '--emit'], { env, input: promptSubmitPayload('sess-a') });
   assert.equal(first.stdout, `${EMISSION_HEADER}\n- Once only.\n`);
   const second = await runCli(['carry-back', '--emit'], { env, input: promptSubmitPayload('sess-a') });
@@ -97,7 +97,7 @@ test('6.4 emitted entries are not emitted again: the second emit prints nothing'
 
 test('6.5 end to end: thread contents never appear in the emitted output, only carry-back entries', async (t) => {
   const stateDir = await tempDir(t);
-  const env = { ANNOTATR_STATE_DIR: stateDir };
+  const env = { SIDESCREEN_STATE_DIR: stateDir };
   const QUESTION = 'QUESTION-MARKER why is the lock a directory?';
   const ANSWER = 'ANSWER-MARKER because mkdir is atomic.';
   const SOURCE_DETAIL = 'SOURCEDETAIL-MARKER src/store.js:1';

@@ -19,7 +19,7 @@ const notice = /** @type {HTMLElement} */ (document.getElementById('follow-notic
 
 const { project, scope, currentPromptId } = initial;
 const projectHref = `/projects/${encodeURIComponent(project.id)}`;
-const collapsedKey = `annotatr:collapsed:${project.id}`;
+const collapsedKey = `sidescreen:collapsed:${project.id}`;
 /** Every turn the sidebar has shown so far, to tell arrivals from what was already there. */
 const knownPromptIds = new Set(turnsOf(initial.sidebar).map((turn) => turn.promptId));
 /** @type {string|null} The turn whose remove control is waiting for its second click. */

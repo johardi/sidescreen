@@ -3,7 +3,7 @@
  * registers the real ingest command as its Stop hook, lands the turn in the store.
  *
  * This spends API credit and needs a logged-in `claude`, so it only runs when
- * ANNOTATR_E2E_CLAUDE=1 is set. Otherwise it is skipped with a reason.
+ * SIDESCREEN_E2E_CLAUDE=1 is set. Otherwise it is skipped with a reason.
  */
 
 import { test } from 'node:test';
@@ -19,7 +19,7 @@ import { Store } from '../src/store.js';
 
 const execFileAsync = promisify(execFile);
 
-const optedIn = process.env.ANNOTATR_E2E_CLAUDE === '1';
+const optedIn = process.env.SIDESCREEN_E2E_CLAUDE === '1';
 const claudeAvailable = await execFileAsync('claude', ['--version']).then(() => true, () => false);
 
 /**
@@ -50,9 +50,9 @@ async function readIfExists(path) {
 
 test(
   'a claude -p turn reaches the store through the Stop hook',
-  { skip: !optedIn ? 'set ANNOTATR_E2E_CLAUDE=1 to run against a real claude' : !claudeAvailable ? 'claude is not on PATH' : false },
+  { skip: !optedIn ? 'set SIDESCREEN_E2E_CLAUDE=1 to run against a real claude' : !claudeAvailable ? 'claude is not on PATH' : false },
   async (t) => {
-    const workDir = await tempDir(t, 'annotatr-e2e-');
+    const workDir = await tempDir(t, 'sidescreen-e2e-');
     const stateDir = join(workDir, 'state');
     const settingsPath = join(workDir, 'settings.json');
     const userSettingsPath = join(homedir(), '.claude', 'settings.json');
@@ -64,7 +64,7 @@ test(
     const { stdout } = await execFileAsync(
       'claude',
       ['-p', '--model', 'haiku', '--no-session-persistence', '--settings', settingsPath, 'Reply with exactly one word: banana'],
-      { cwd: workDir, env: childEnv({ ANNOTATR_STATE_DIR: stateDir }), timeout: 120_000 },
+      { cwd: workDir, env: childEnv({ SIDESCREEN_STATE_DIR: stateDir }), timeout: 120_000 },
     );
     assert.match(stdout, /banana/i, 'claude answered');
 
@@ -82,10 +82,10 @@ test(
 );
 
 test(
-  'after annotatr init, a claude -p turn in that project reaches the store through the project-level hook',
-  { skip: !optedIn ? 'set ANNOTATR_E2E_CLAUDE=1 to run against a real claude' : !claudeAvailable ? 'claude is not on PATH' : false },
+  'after sidescreen init, a claude -p turn in that project reaches the store through the project-level hook',
+  { skip: !optedIn ? 'set SIDESCREEN_E2E_CLAUDE=1 to run against a real claude' : !claudeAvailable ? 'claude is not on PATH' : false },
   async (t) => {
-    const workDir = await tempDir(t, 'annotatr-e2e-init-');
+    const workDir = await tempDir(t, 'sidescreen-e2e-init-');
     const stateDir = join(workDir, 'state');
     const userSettingsPath = join(homedir(), '.claude', 'settings.json');
     const userSettingsBefore = await readIfExists(userSettingsPath);
@@ -96,7 +96,7 @@ test(
     const { stdout } = await execFileAsync(
       'claude',
       ['-p', '--model', 'haiku', '--no-session-persistence', 'Reply with exactly one word: banana'],
-      { cwd: workDir, env: childEnv({ ANNOTATR_STATE_DIR: stateDir }), timeout: 120_000 },
+      { cwd: workDir, env: childEnv({ SIDESCREEN_STATE_DIR: stateDir }), timeout: 120_000 },
     );
     assert.match(stdout, /banana/i, 'claude answered');
 

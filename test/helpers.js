@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const BIN = fileURLToPath(new URL('../bin/annotatr.js', import.meta.url));
+export const BIN = fileURLToPath(new URL('../bin/sidescreen.js', import.meta.url));
 export const FIXTURES = fileURLToPath(new URL('./fixtures/', import.meta.url));
 
 /**
@@ -13,14 +13,14 @@ export const FIXTURES = fileURLToPath(new URL('./fixtures/', import.meta.url));
  * @param {import('node:test').TestContext} t
  * @param {string} [prefix]
  */
-export async function tempDir(t, prefix = 'annotatr-') {
+export async function tempDir(t, prefix = 'sidescreen-') {
   const dir = await mkdtemp(join(tmpdir(), prefix));
   t.after(() => rm(dir, { recursive: true, force: true }));
   return dir;
 }
 
 /**
- * Run the annotatr CLI as a child process.
+ * Run the sidescreen CLI as a child process.
  *
  * @param {string[]} args
  * @param {{ env?: NodeJS.ProcessEnv, input?: string, cwd?: string }} [options]

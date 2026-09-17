@@ -10,7 +10,7 @@ const fixture = JSON.parse(fixtureText);
 
 test('piping the captured probe payload into ingest creates a retrievable turn', async (t) => {
   const stateDir = await tempDir(t);
-  const result = await runCli(['ingest'], { env: { ANNOTATR_STATE_DIR: stateDir }, input: fixtureText });
+  const result = await runCli(['ingest'], { env: { SIDESCREEN_STATE_DIR: stateDir }, input: fixtureText });
   assert.equal(result.code, 0, result.stderr);
   assert.equal(result.stdout, '', 'ingest stays silent so the hook adds nothing to the transcript');
 
@@ -26,7 +26,7 @@ test('piping the captured probe payload into ingest creates a retrievable turn',
 
 test('a second Stop for the same prompt_id replaces the turn rather than duplicating it', async (t) => {
   const stateDir = await tempDir(t);
-  const env = { ANNOTATR_STATE_DIR: stateDir };
+  const env = { SIDESCREEN_STATE_DIR: stateDir };
   await runCli(['ingest'], { env, input: fixtureText });
   await runCli(['ingest'], { env, input: JSON.stringify({ ...fixture, last_assistant_message: 'banana, revised' }) });
 
@@ -38,7 +38,7 @@ test('a second Stop for the same prompt_id replaces the turn rather than duplica
 test('ingest records the session and reads its title from the transcript, keeping it when a later transcript has none', async (t) => {
   const dir = await tempDir(t);
   const stateDir = join(dir, 'state');
-  const env = { ANNOTATR_STATE_DIR: stateDir };
+  const env = { SIDESCREEN_STATE_DIR: stateDir };
   const untitled = join(dir, 'untitled.jsonl');
   await writeFile(untitled, JSON.stringify({ type: 'user', message: { role: 'user', content: 'hi' } }) + '\n', 'utf8');
   const titled = join(dir, 'titled.jsonl');
@@ -62,7 +62,7 @@ test('ingest records the session and reads its title from the transcript, keepin
 
 test('a malformed payload exits 1 with a message and writes nothing', async (t) => {
   const stateDir = await tempDir(t);
-  const result = await runCli(['ingest'], { env: { ANNOTATR_STATE_DIR: stateDir }, input: '{"session_id": "x"}' });
+  const result = await runCli(['ingest'], { env: { SIDESCREEN_STATE_DIR: stateDir }, input: '{"session_id": "x"}' });
   assert.equal(result.code, 1);
   assert.match(result.stderr, /missing required field "last_assistant_message"/);
   await assert.rejects(access(join(stateDir, 'store.json')), 'no store file should be created');

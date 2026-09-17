@@ -8,13 +8,13 @@ import { Store, StoreError, defaultStateDir } from '../src/store.js';
 const fixtureText = await readFile(join(FIXTURES, 'stop-hook-payload.json'), 'utf8');
 const fixture = JSON.parse(fixtureText);
 
-test('ANNOTATR_STATE_DIR overrides the state directory', () => {
-  assert.equal(defaultStateDir({ ANNOTATR_STATE_DIR: '/tmp/custom' }, '/home/u'), '/tmp/custom');
+test('SIDESCREEN_STATE_DIR overrides the state directory', () => {
+  assert.equal(defaultStateDir({ SIDESCREEN_STATE_DIR: '/tmp/custom' }, '/home/u'), '/tmp/custom');
 });
 
 test('the state directory falls back to XDG_STATE_HOME, then ~/.local/state', () => {
-  assert.equal(defaultStateDir({ XDG_STATE_HOME: '/xdg/state' }, '/home/u'), '/xdg/state/annotatr');
-  assert.equal(defaultStateDir({}, '/home/u'), '/home/u/.local/state/annotatr');
+  assert.equal(defaultStateDir({ XDG_STATE_HOME: '/xdg/state' }, '/home/u'), '/xdg/state/sidescreen');
+  assert.equal(defaultStateDir({}, '/home/u'), '/home/u/.local/state/sidescreen');
 });
 
 test('reading a missing store yields an empty state', async (t) => {
@@ -50,7 +50,7 @@ test('concurrent in-process updates are serialized and none is lost', async (t) 
 
 test('two concurrent ingest processes both retain their turns', async (t) => {
   const stateDir = await tempDir(t);
-  const env = { ANNOTATR_STATE_DIR: stateDir };
+  const env = { SIDESCREEN_STATE_DIR: stateDir };
   const payloads = ['first', 'second', 'third', 'fourth'].map((word, index) =>
     JSON.stringify({ ...fixture, prompt_id: `prompt-${index}`, last_assistant_message: word }),
   );

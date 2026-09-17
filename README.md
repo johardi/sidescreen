@@ -1,4 +1,4 @@
-# annotatr
+# sidescreen
 
 A second screen for coding-agent output.
 Each finished Claude Code turn appears in your browser as a document, filed under its session and its project.
@@ -15,14 +15,14 @@ A separate, read-only sub-agent answers, and nothing about the question or the a
 
 ```sh
 npm install
-npm link                      # puts `annotatr` on your PATH, optional
+npm link                      # puts `sidescreen` on your PATH, optional
 cd your-project
-annotatr init                 # hooks in ./.claude/settings.json, skill in ./.claude/skills/annotatr/
-annotatr serve --open         # opens this project's page on http://127.0.0.1:7486/
+sidescreen init                 # hooks in ./.claude/settings.json, skill in ./.claude/skills/sidescreen/
+sidescreen serve --open         # opens this project's page on http://127.0.0.1:7486/
 ```
 
 Claude Code reads hooks when it starts, so restart any session already open in that project.
-To register the hook for every project instead, run `annotatr setup hooks`, which edits `~/.claude/settings.json`.
+To register the hook for every project instead, run `sidescreen setup hooks`, which edits `~/.claude/settings.json`.
 
 Finish a turn in Claude Code.
 It shows up in the browser on its own.
@@ -60,23 +60,23 @@ The button turns into a confirmation that says what goes with it, such as "Remov
 Click it again to remove the turn and its threads.
 Escape, moving off the row, or clicking anywhere else cancels.
 Carry-back entries are never removed with a turn, because they are still owed to the terminal, and a session whose last turn is removed leaves the sidebar.
-The turn's text is still in the Claude Code transcript on disk; only annotatr's copy and its threads go.
+The turn's text is still in the Claude Code transcript on disk; only sidescreen's copy and its threads go.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
-| `annotatr init [--dry-run]` | Set up the current directory: register the hooks in `./.claude/settings.json` and install annotatr's skills into `./.claude/skills/`. Idempotent. Files that are not annotatr's are never touched. |
-| `annotatr setup hooks [--settings <path>] [--project] [--dry-run]` | Register annotatr's hooks idempotently. Reports, rather than edits, a settings file it cannot parse. |
-| `annotatr ingest` | Read a `Stop` hook payload on stdin and store the turn. Run by the hook, not by hand. |
-| `annotatr carry-back --emit` | Print the session's pending carry-back entries as plain text, then mark them sent. Run by the `UserPromptSubmit` hook, not by hand. |
-| `annotatr serve [--port <n>] [--open]` | Start the browser surface on loopback. `--open` opens the current directory's project page. A second `serve` on a busy port says so and exits. |
+| `sidescreen init [--dry-run]` | Set up the current directory: register the hooks in `./.claude/settings.json` and install sidescreen's skills into `./.claude/skills/`. Idempotent. Files that are not sidescreen's are never touched. |
+| `sidescreen setup hooks [--settings <path>] [--project] [--dry-run]` | Register sidescreen's hooks idempotently. Reports, rather than edits, a settings file it cannot parse. |
+| `sidescreen ingest` | Read a `Stop` hook payload on stdin and store the turn. Run by the hook, not by hand. |
+| `sidescreen carry-back --emit` | Print the session's pending carry-back entries as plain text, then mark them sent. Run by the `UserPromptSubmit` hook, not by hand. |
+| `sidescreen serve [--port <n>] [--open]` | Start the browser surface on loopback. `--open` opens the current directory's project page. A second `serve` on a busy port says so and exits. |
 
 ## The shipped skill
 
-`annotatr init` installs one skill, `annotatr`, into the project.
-It tells the main session how annotatr works alongside it: the final message of a turn is what the user reviews, side questions never reach the session, how to treat conclusions the user carries back, and which commands open or repair the surface.
-The installed copy is annotatr's to maintain: a later `annotatr init` overwrites local edits to it and says so.
+`sidescreen init` installs one skill, `sidescreen`, into the project.
+It tells the main session how sidescreen works alongside it: the final message of a turn is what the user reviews, side questions never reach the session, how to treat conclusions the user carries back, and which commands open or repair the surface.
+The installed copy is sidescreen's to maintain: a later `sidescreen init` overwrites local edits to it and says so.
 
 ## Configuration
 
@@ -84,11 +84,11 @@ All configuration is by environment variable.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `ANNOTATR_STATE_DIR` | `$XDG_STATE_HOME/annotatr` | Where the store lives. |
-| `ANNOTATR_CODEX_BIN` | `codex` | The sub-agent command. |
-| `ANNOTATR_MODEL` | the sub-agent's own default | Model passed to the sub-agent. |
-| `ANNOTATR_DISPATCH_TIMEOUT_MS` | `300000` | Time bound per question. A question that runs past it is reported as failed. |
-| `ANNOTATR_CONVENTIONS_FILES` | `~/.claude/CLAUDE.md`, `./CLAUDE.md`, `./AGENTS.md` | Files forwarded into every sub-agent prompt, path-delimited, because the sub-agent does not read your agent instructions. |
+| `SIDESCREEN_STATE_DIR` | `$XDG_STATE_HOME/sidescreen` | Where the store lives. |
+| `SIDESCREEN_CODEX_BIN` | `codex` | The sub-agent command. |
+| `SIDESCREEN_MODEL` | the sub-agent's own default | Model passed to the sub-agent. |
+| `SIDESCREEN_DISPATCH_TIMEOUT_MS` | `300000` | Time bound per question. A question that runs past it is reported as failed. |
+| `SIDESCREEN_CONVENTIONS_FILES` | `~/.claude/CLAUDE.md`, `./CLAUDE.md`, `./AGENTS.md` | Files forwarded into every sub-agent prompt, path-delimited, because the sub-agent does not read your agent instructions. |
 
 ## How it is put together
 
@@ -108,7 +108,7 @@ All configuration is by environment variable.
 
 ```sh
 npm run check                 # lint, typecheck, tests
-ANNOTATR_E2E_CLAUDE=1 npm test  # also runs the real `claude -p` hook test, which spends API credit
+SIDESCREEN_E2E_CLAUDE=1 npm test  # also runs the real `claude -p` hook test, which spends API credit
 UPDATE_SNAPSHOTS=1 npm test   # rewrites the markdown rendering snapshot
 ```
 

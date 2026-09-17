@@ -13,7 +13,7 @@ import { delimiter, join } from 'node:path';
 const MAX_CHARS_PER_FILE = 12_000;
 
 /**
- * Files consulted when ANNOTATR_CONVENTIONS_FILES is not set.
+ * Files consulted when SIDESCREEN_CONVENTIONS_FILES is not set.
  *
  * @param {string} home
  * @param {string} cwd
@@ -28,7 +28,7 @@ export function defaultConventionFiles(home, cwd) {
  * @returns {Promise<{ text: string, sources: string[] }>}
  */
 export async function loadConventions({ cwd, env, home = homedir() }) {
-  const configured = env.ANNOTATR_CONVENTIONS_FILES;
+  const configured = env.SIDESCREEN_CONVENTIONS_FILES;
   const paths = configured !== undefined ? configured.split(delimiter).filter((path) => path !== '') : defaultConventionFiles(home, cwd);
 
   /** @type {string[]} */

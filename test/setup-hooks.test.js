@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { BIN, runCli, tempDir } from './helpers.js';
-import { hookCommand, isAnnotatrHookCommand, registerHooks } from '../src/setup-hooks.js';
+import { hookCommand, isSidescreenHookCommand, registerHooks } from '../src/setup-hooks.js';
 
 /** @param {string} path */
 const readJson = async (path) => JSON.parse(await readFile(path, 'utf8'));
@@ -55,11 +55,11 @@ test('unrelated settings and unrelated hooks are left untouched', async (t) => {
   assert.equal(hooks.Stop[1].hooks[0].command, hookCommand(BIN, 'ingest'));
 });
 
-test('an existing annotatr hook with a stale path is updated in place, not duplicated', async (t) => {
+test('an existing sidescreen hook with a stale path is updated in place, not duplicated', async (t) => {
   const settingsPath = join(await tempDir(t), 'settings.json');
   await writeFile(
     settingsPath,
-    JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'node /old/place/bin/annotatr.js ingest' }] }] } }),
+    JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'node /old/place/bin/sidescreen.js ingest' }] }] } }),
     'utf8',
   );
   const result = await runCli(['setup', 'hooks', '--settings', settingsPath]);
@@ -100,19 +100,19 @@ test('--dry-run reports without writing', async (t) => {
   await assert.rejects(readFile(settingsPath));
 });
 
-test('isAnnotatrHookCommand recognizes the ways annotatr can be invoked', () => {
-  assert.ok(isAnnotatrHookCommand('annotatr ingest', 'ingest'));
-  assert.ok(isAnnotatrHookCommand('node /x/bin/annotatr.js ingest', 'ingest'));
-  assert.ok(isAnnotatrHookCommand('node "/x y/bin/annotatr.js" ingest', 'ingest'));
-  assert.ok(isAnnotatrHookCommand('npx annotatr ingest', 'ingest'));
-  assert.ok(!isAnnotatrHookCommand('annotatr serve', 'ingest'));
-  assert.ok(!isAnnotatrHookCommand('my-annotatr-wrapper ingest', 'ingest'));
-  assert.ok(!isAnnotatrHookCommand('echo annotatr ingestion', 'ingest'));
+test('isSidescreenHookCommand recognizes the ways sidescreen can be invoked', () => {
+  assert.ok(isSidescreenHookCommand('sidescreen ingest', 'ingest'));
+  assert.ok(isSidescreenHookCommand('node /x/bin/sidescreen.js ingest', 'ingest'));
+  assert.ok(isSidescreenHookCommand('node "/x y/bin/sidescreen.js" ingest', 'ingest'));
+  assert.ok(isSidescreenHookCommand('npx sidescreen ingest', 'ingest'));
+  assert.ok(!isSidescreenHookCommand('sidescreen serve', 'ingest'));
+  assert.ok(!isSidescreenHookCommand('my-sidescreen-wrapper ingest', 'ingest'));
+  assert.ok(!isSidescreenHookCommand('echo sidescreen ingestion', 'ingest'));
 });
 
 test('registerHooks is pure and does not mutate its input', () => {
   const input = { hooks: { Stop: [] } };
   const snapshot = JSON.stringify(input);
-  registerHooks(input, { binPath: '/bin/annotatr.js' });
+  registerHooks(input, { binPath: '/bin/sidescreen.js' });
   assert.equal(JSON.stringify(input), snapshot);
 });

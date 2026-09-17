@@ -50,7 +50,7 @@ test('selecting part of a sentence and asking creates a thread with the expected
   assert.equal(await threadSection.locator('.source-detail').textContent(), 'src/store.js:42');
   assert.match((await threadSection.locator('.answer-body').textContent()) ?? '', /Because of Why is the fox quick\?/);
 
-  const mark = page.locator('#document mark[data-annotatr-mark]');
+  const mark = page.locator('#document mark[data-sidescreen-mark]');
   assert.equal(await mark.count(), 1);
   assert.equal(await mark.textContent(), 'ick brown fo');
   assert.equal(await mark.getAttribute('data-index'), '1');
@@ -80,7 +80,7 @@ test('anchored threads are marked inline and clicking a mark activates its threa
 
   const { page } = await openBrowser(t);
   await page.goto(new URL('/turns/prompt-1', url).href);
-  const marks = page.locator('#document mark[data-annotatr-mark]');
+  const marks = page.locator('#document mark[data-sidescreen-mark]');
   assert.equal(await marks.count(), 2);
   assert.deepEqual(await marks.allTextContents(), ['quick', 'second']);
   assert.equal(await page.locator('.thread .question').textContent(), 'second?', 'the newest thread is active by default');
@@ -138,7 +138,7 @@ test('the layout holds at 400px with no horizontal page scroll', async (t) => {
   assert.ok(documentBox && threadBox);
   assert.ok(threadBox.y >= documentBox.y + documentBox.height - 1, 'the thread column stacks below the document on a narrow screen');
   assert.ok(threadBox.width <= 400);
-  assert.equal(await page.locator('#document mark[data-annotatr-mark]').count(), 1);
+  assert.equal(await page.locator('#document mark[data-sidescreen-mark]').count(), 1);
   assert.deepEqual(consoleErrors, []);
 });
 
@@ -260,7 +260,7 @@ test('branching from an answer opens a sibling tab with its own question, and th
   assert.equal(await page.locator('.thread .question').textContent(), 'sideways?');
   assert.match((await page.locator('.thread-lineage').textContent()) ?? '', /Branched from answer 1 of main/);
   await page.locator('.thread .source-badge').waitFor();
-  assert.equal(await page.locator('#document mark[data-annotatr-mark]').count(), 1, 'a branch shares its parent\'s anchor');
+  assert.equal(await page.locator('#document mark[data-sidescreen-mark]').count(), 1, 'a branch shares its parent\'s anchor');
 
   await tabs.first().click();
   assert.equal(await page.locator('.thread .question').textContent(), 'first?');
@@ -347,7 +347,7 @@ test('entries leave the page once they have been carried back, and the page lear
   assert.equal(await page.locator('#carry-back-sent').textContent(), '');
 
   // The next prompt's hook emits from another process; the page must notice on its own.
-  const emitted = await runCli(['carry-back', '--emit', '--session', 'session-1'], { env: { ANNOTATR_STATE_DIR: stateDir } });
+  const emitted = await runCli(['carry-back', '--emit', '--session', 'session-1'], { env: { SIDESCREEN_STATE_DIR: stateDir } });
   assert.equal(emitted.code, 0, emitted.stderr);
   assert.match(emitted.stdout, /First conclusion.\n- Second conclusion./);
 

@@ -198,7 +198,7 @@ function applyMarks() {
 
 documentElement.addEventListener('click', (event) => {
   if (!(event.target instanceof Element)) return;
-  const mark = event.target.closest('mark[data-annotatr-mark]');
+  const mark = event.target.closest('mark[data-sidescreen-mark]');
   if (!(mark instanceof HTMLElement) || !mark.dataset.threadId) return;
   state.activeThreadId = mark.dataset.threadId;
   render();

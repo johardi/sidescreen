@@ -155,7 +155,7 @@ test('loadConventions reads the configured files and skips missing ones', async 
   const dir = await tempDir(t);
   const rules = join(dir, 'rules.md');
   await writeFile(rules, '# House rules\n\nRULE-ABC applies.\n', 'utf8');
-  const { text, sources } = await loadConventions({ cwd: dir, env: { ANNOTATR_CONVENTIONS_FILES: `${rules}:${join(dir, 'missing.md')}` } });
+  const { text, sources } = await loadConventions({ cwd: dir, env: { SIDESCREEN_CONVENTIONS_FILES: `${rules}:${join(dir, 'missing.md')}` } });
   assert.deepEqual(sources, [rules]);
   assert.ok(text.includes('RULE-ABC applies.'));
   assert.ok(text.includes(`### From ${rules}`));
@@ -181,7 +181,7 @@ test('the real dispatch path forwards conventions loaded from disk', async (t) =
   const result = await dispatchQuestion({
     ...fixture(cwd),
     codexBin: STUB_CODEX,
-    env: { ...process.env, ANNOTATR_CONVENTIONS_FILES: rules, STUB_CODEX_PROMPT_TO: promptFile },
+    env: { ...process.env, SIDESCREEN_CONVENTIONS_FILES: rules, STUB_CODEX_PROMPT_TO: promptFile },
     timeoutMs: 10_000,
   });
   assert.equal(result.ok, true, JSON.stringify(result));
@@ -298,12 +298,12 @@ test('the dispatch module source has no sandbox parameter and only ever names re
 
 test('dispatch settings come from the environment with safe defaults', () => {
   assert.deepEqual(dispatchSettings({}), { codexBin: 'codex', timeoutMs: 300_000, model: undefined });
-  assert.deepEqual(dispatchSettings({ ANNOTATR_CODEX_BIN: '/x/codex', ANNOTATR_DISPATCH_TIMEOUT_MS: '1500', ANNOTATR_MODEL: 'm' }), {
+  assert.deepEqual(dispatchSettings({ SIDESCREEN_CODEX_BIN: '/x/codex', SIDESCREEN_DISPATCH_TIMEOUT_MS: '1500', SIDESCREEN_MODEL: 'm' }), {
     codexBin: '/x/codex',
     timeoutMs: 1_500,
     model: 'm',
   });
-  assert.equal(dispatchSettings({ ANNOTATR_DISPATCH_TIMEOUT_MS: 'nope' }).timeoutMs, 300_000);
+  assert.equal(dispatchSettings({ SIDESCREEN_DISPATCH_TIMEOUT_MS: 'nope' }).timeoutMs, 300_000);
 });
 
 // ---- Group 5: continuing an answer forks its session ------------------------

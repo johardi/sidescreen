@@ -1,11 +1,11 @@
 <h1>Summary of the change</h1>
-<p>The store is now a single JSON file under <code>ANNOTATR_STATE_DIR</code>, written through one async mutex.
+<p>The store is now a single JSON file under <code>SIDESCREEN_STATE_DIR</code>, written through one async mutex.
 Two concurrent ingests <strong>cannot</strong> lose a write, and a <em>corrupt</em> file is an error rather than a reset.</p>
 <h2>What changed</h2>
 <ul>
 <li><code>src/store.js</code>: added <code>Store.update()</code> with a directory lock</li>
 <li><code>src/mutex.js</code>: a promise-chain mutex</li>
-<li><code>test/store.test.js</code>: fires two concurrent <code>annotatr ingest</code> processes</li>
+<li><code>test/store.test.js</code>: fires two concurrent <code>sidescreen ingest</code> processes</li>
 </ul>
 <ol>
 <li>Read the current state</li>

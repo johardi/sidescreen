@@ -286,11 +286,11 @@ export function createCodexDispatch({ env, spawn }) {
  * @returns {{ codexBin: string, timeoutMs: number, model: string|undefined }}
  */
 export function dispatchSettings(env) {
-  const timeout = Number(env.ANNOTATR_DISPATCH_TIMEOUT_MS);
+  const timeout = Number(env.SIDESCREEN_DISPATCH_TIMEOUT_MS);
   return {
-    codexBin: env.ANNOTATR_CODEX_BIN || DEFAULT_CODEX_BIN,
+    codexBin: env.SIDESCREEN_CODEX_BIN || DEFAULT_CODEX_BIN,
     timeoutMs: Number.isFinite(timeout) && timeout > 0 ? timeout : DEFAULT_TIMEOUT_MS,
-    model: env.ANNOTATR_MODEL || undefined,
+    model: env.SIDESCREEN_MODEL || undefined,
   };
 }
 

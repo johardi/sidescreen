@@ -17,7 +17,7 @@ import { CONVENTIONS_HEADING } from '../src/dispatch-prompt.js';
 const STUB_CODEX = join(FIXTURES, 'stub-codex.js');
 
 /**
- * Start `annotatr serve` as a child process and wait for its URL.
+ * Start `sidescreen serve` as a child process and wait for its URL.
  *
  * @param {import('node:test').TestContext} t
  * @param {NodeJS.ProcessEnv} env
@@ -36,7 +36,7 @@ async function serveViaCli(t, env) {
     let output = '';
     child.stdout.on('data', (chunk) => {
       output += String(chunk);
-      const match = /annotatr listening on (http:\/\/[^\s]+)/.exec(output);
+      const match = /sidescreen listening on (http:\/\/[^\s]+)/.exec(output);
       if (match) resolve(match[1]);
     });
     child.once('close', (code) => reject(new Error(`serve exited early with ${code}: ${stderr}`)));
@@ -45,7 +45,7 @@ async function serveViaCli(t, env) {
 }
 
 test('ingest, annotate, dispatch to a stub sub-agent, and render the sourced answer', async (t) => {
-  const dir = await tempDir(t, 'annotatr-loop-');
+  const dir = await tempDir(t, 'sidescreen-loop-');
   const project = join(dir, 'project');
   const stateDir = join(dir, 'state');
   await mkdir(join(project, 'src'), { recursive: true });
@@ -55,9 +55,9 @@ test('ingest, annotate, dispatch to a stub sub-agent, and render the sourced ans
   const promptFile = join(dir, 'codex-prompt.txt');
 
   const env = {
-    ANNOTATR_STATE_DIR: stateDir,
-    ANNOTATR_CODEX_BIN: STUB_CODEX,
-    ANNOTATR_CONVENTIONS_FILES: join(project, 'CLAUDE.md'),
+    SIDESCREEN_STATE_DIR: stateDir,
+    SIDESCREEN_CODEX_BIN: STUB_CODEX,
+    SIDESCREEN_CONVENTIONS_FILES: join(project, 'CLAUDE.md'),
     STUB_CODEX_ARGS_TO: argsFile,
     STUB_CODEX_PROMPT_TO: promptFile,
     STUB_CODEX_THREAD_ID: 'codex-thread-e2e',
@@ -101,7 +101,7 @@ test('ingest, annotate, dispatch to a stub sub-agent, and render the sourced ans
   assert.equal(await thread.locator('.source-detail').textContent(), 'transcript turn 7');
   assert.match((await thread.locator('.answer-body').textContent()) ?? '', /The lock is a directory because mkdir is atomic/);
   assert.equal(await thread.locator('.answer').getAttribute('data-status'), 'answered');
-  assert.equal(await page.locator('#document mark[data-annotatr-mark]').textContent(), 'directory lock');
+  assert.equal(await page.locator('#document mark[data-sidescreen-mark]').textContent(), 'directory lock');
 
   // 5. The real dispatch path built a read-only invocation in the turn's cwd with the conventions forwarded.
   const args = JSON.parse(await readFile(argsFile, 'utf8'));

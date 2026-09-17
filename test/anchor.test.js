@@ -150,7 +150,7 @@ test('marks are transparent: anchors ignore wrappers that already exist', () => 
   // Wrap an overlapping earlier range, splitting the paragraph's text nodes.
   const marks = wrapRange(rangeOver(document, root, 'quick brown'), { 'data-thread-id': 't1' });
   assert.equal(marks.length, 1);
-  assert.equal(root.querySelectorAll('mark[data-annotatr-mark]').length, 1);
+  assert.equal(root.querySelectorAll('mark[data-sidescreen-mark]').length, 1);
 
   // Describing the same text on the marked-up document yields the same anchor.
   const start = rangeOver(document, root, 'brown');

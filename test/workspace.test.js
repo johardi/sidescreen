@@ -301,7 +301,7 @@ test('4.3 removing the turn on screen moves to the project\'s follow address, an
 });
 
 test('5.2 a version 1 store opens in the workspace with its threads and carry-back, and removal leaves carry-back alone', async (t) => {
-  const stateDir = await tempDir(t, 'annotatr-v1-');
+  const stateDir = await tempDir(t, 'sidescreen-v1-');
   const anchor = { start: { path: [0], offset: 4 }, end: { path: [0], offset: 9 }, text: 'quick' };
   const turn = sampleTurn();
   const v1 = {
@@ -330,7 +330,7 @@ test('5.2 a version 1 store opens in the workspace with its threads and carry-ba
 
   assert.equal(await page.locator('.session').count(), 1);
   assert.deepEqual(await page.locator('.turn-row').evaluateAll((rows) => rows.map((row) => row.getAttribute('data-prompt-id'))), [turn.promptId, 'older']);
-  assert.equal(await page.locator('#document mark[data-annotatr-mark]').count(), 1, 'the old thread is anchored');
+  assert.equal(await page.locator('#document mark[data-sidescreen-mark]').count(), 1, 'the old thread is anchored');
   assert.equal(await page.locator('.thread .question').textContent(), 'Why quick?');
   assert.deepEqual(await page.locator('.carry-back-entry-text').allTextContents(), ['Carried from before.']);
 
@@ -341,7 +341,7 @@ test('5.2 a version 1 store opens in the workspace with its threads and carry-ba
   await row.locator('.turn-remove').click();
   await page.waitForURL(new URL(`/projects/${PROJECT}`, url).href);
   await page.locator('#document', { hasText: 'Older turn.' }).waitFor();
-  assert.equal(await page.locator('#document mark[data-annotatr-mark]').count(), 0);
+  assert.equal(await page.locator('#document mark[data-sidescreen-mark]').count(), 0);
   assert.deepEqual(await page.locator('.carry-back-entry-text').allTextContents(), ['Carried from before.'], 'carry-back is still owed to the terminal');
   assert.deepEqual(consoleErrors, []);
 });

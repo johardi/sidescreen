@@ -1,7 +1,7 @@
 /**
- * `annotatr setup hooks`: register annotatr's hooks in a Claude Code settings file.
+ * `sidescreen setup hooks`: register sidescreen's hooks in a Claude Code settings file.
  *
- * Registration is idempotent. An existing annotatr entry for an event is
+ * Registration is idempotent. An existing sidescreen entry for an event is
  * updated in place rather than duplicated, and every unrelated setting is
  * preserved byte-for-byte in meaning.
  */
@@ -13,10 +13,10 @@ import { homedir } from 'node:os';
 /**
  * @typedef {object} HookRegistration
  * @property {string} event Claude Code hook event name.
- * @property {string} subcommand The annotatr subcommand the hook runs.
+ * @property {string} subcommand The sidescreen subcommand the hook runs.
  */
 
-/** Hooks annotatr needs. */
+/** Hooks sidescreen needs. */
 export const HOOK_REGISTRATIONS = /** @type {readonly HookRegistration[]} */ ([
   { event: 'Stop', subcommand: 'ingest' },
   { event: 'UserPromptSubmit', subcommand: 'carry-back --emit' },
@@ -64,7 +64,7 @@ export function projectSettingsPath(cwd) {
 /**
  * The shell command a hook runs for a subcommand.
  *
- * @param {string} binPath Absolute path to bin/annotatr.js.
+ * @param {string} binPath Absolute path to bin/sidescreen.js.
  * @param {string} subcommand
  */
 export function hookCommand(binPath, subcommand) {
@@ -72,20 +72,20 @@ export function hookCommand(binPath, subcommand) {
 }
 
 /**
- * Whether a hook command is annotatr running `subcommand`, however it is invoked.
+ * Whether a hook command is sidescreen running `subcommand`, however it is invoked.
  *
  * @param {string} command
  * @param {string} subcommand
  */
-export function isAnnotatrHookCommand(command, subcommand) {
+export function isSidescreenHookCommand(command, subcommand) {
   const pattern = new RegExp(
-    String.raw`(?:^|[\s"'/\\])annotatr(?:\.js)?["']?\s+${escapeRegExp(subcommand)}(?:\s|$)`,
+    String.raw`(?:^|[\s"'/\\])sidescreen(?:\.js)?["']?\s+${escapeRegExp(subcommand)}(?:\s|$)`,
   );
   return pattern.test(command);
 }
 
 /**
- * Register annotatr's hooks in a settings object. Pure: returns a new object.
+ * Register sidescreen's hooks in a settings object. Pure: returns a new object.
  *
  * @param {Record<string, unknown>} settings Parsed settings file contents.
  * @param {{ binPath: string, registrations?: readonly HookRegistration[] }} options
@@ -113,7 +113,7 @@ export function registerHooks(settings, { binPath, registrations = HOOK_REGISTRA
       hooks: Array.isArray(group.hooks) ? group.hooks.map((hook) => ({ ...hook })) : [],
     }));
 
-    const match = findAnnotatrHook(groups, subcommand);
+    const match = findSidescreenHook(groups, subcommand);
     if (match === null) {
       groups.push({ hooks: [{ type: 'command', command }] });
       report.push({ event, action: 'added', command });
@@ -134,10 +134,10 @@ export function registerHooks(settings, { binPath, registrations = HOOK_REGISTRA
  * @param {string} subcommand
  * @returns {HookCommand|null}
  */
-function findAnnotatrHook(groups, subcommand) {
+function findSidescreenHook(groups, subcommand) {
   for (const group of groups) {
     for (const hook of group.hooks) {
-      if (hook && typeof hook.command === 'string' && isAnnotatrHookCommand(hook.command, subcommand)) {
+      if (hook && typeof hook.command === 'string' && isSidescreenHookCommand(hook.command, subcommand)) {
         return hook;
       }
     }
@@ -173,13 +173,13 @@ export async function setupHooks({ settingsPath, binPath, stdout, stderr, dryRun
     try {
       const parsed = JSON.parse(existingText);
       if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        stderr.write(`annotatr setup hooks: ${settingsPath} does not contain a JSON object; leaving it untouched\n`);
+        stderr.write(`sidescreen setup hooks: ${settingsPath} does not contain a JSON object; leaving it untouched\n`);
         return 1;
       }
       settings = parsed;
     } catch (error) {
       stderr.write(
-        `annotatr setup hooks: could not parse ${settingsPath} (${/** @type {Error} */ (error).message}); leaving it untouched\n`,
+        `sidescreen setup hooks: could not parse ${settingsPath} (${/** @type {Error} */ (error).message}); leaving it untouched\n`,
       );
       return 1;
     }
@@ -191,7 +191,7 @@ export async function setupHooks({ settingsPath, binPath, stdout, stderr, dryRun
     result = registerHooks(settings, { binPath });
   } catch (error) {
     if (error instanceof SetupHooksError) {
-      stderr.write(`annotatr setup hooks: ${error.message} in ${settingsPath}; leaving it untouched\n`);
+      stderr.write(`sidescreen setup hooks: ${error.message} in ${settingsPath}; leaving it untouched\n`);
       return 1;
     }
     throw error;
@@ -251,7 +251,7 @@ export async function isIngestHookRegistered({ env, cwd }) {
     }
     const hooks = /** @type {{ hooks?: { Stop?: HookGroup[] } }} */ (parsed)?.hooks;
     const groups = hooks?.Stop;
-    if (Array.isArray(groups) && findAnnotatrHook(groups, 'ingest') !== null) return true;
+    if (Array.isArray(groups) && findSidescreenHook(groups, 'ingest') !== null) return true;
   }
   return false;
 }

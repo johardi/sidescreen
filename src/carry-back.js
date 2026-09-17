@@ -2,7 +2,7 @@
  * Carry-back list: the only thing that returns to the main session.
  *
  * The user adds conclusions while reviewing. On the next prompt, the
- * UserPromptSubmit hook runs `annotatr carry-back --emit`, which prints the
+ * UserPromptSubmit hook runs `sidescreen carry-back --emit`, which prints the
  * pending entries and nothing else: no questions, no answers, no thread text.
  * Claude Code injects that stdout as context, and the entries are then marked
  * emitted so they are not injected again.
@@ -24,7 +24,7 @@ import { Store, defaultStateDir } from './store.js';
  * @property {string|null} emittedAt ISO timestamp of the emit that returned it, or null while pending.
  */
 
-export const EMISSION_HEADER = 'Conclusions the user carried back from their annotatr review of earlier output:';
+export const EMISSION_HEADER = 'Conclusions the user carried back from their sidescreen review of earlier output:';
 
 /**
  * @param {State} state
@@ -102,7 +102,7 @@ export async function emitCarryBack({ store, sessionId, stdout, now = new Date()
 }
 
 /**
- * `annotatr carry-back --emit [--session <id>]`.
+ * `sidescreen carry-back --emit [--session <id>]`.
  *
  * Run by the UserPromptSubmit hook with the hook payload on stdin. Prints only
  * pending entries for that session, or nothing. Exit 0 either way, because a
@@ -123,25 +123,25 @@ export async function carryBackCommand(argv, io) {
       sessionId = argv[index + 1];
       index += 1;
     } else {
-      io.stderr.write(`annotatr carry-back: unknown option "${arg}"\n`);
+      io.stderr.write(`sidescreen carry-back: unknown option "${arg}"\n`);
       return 1;
     }
   }
   if (!emit) {
-    io.stderr.write('annotatr carry-back: expected --emit\n');
+    io.stderr.write('sidescreen carry-back: expected --emit\n');
     return 1;
   }
   if (sessionId === null) {
     const text = await readAll(io.stdin);
     if (text.trim() === '') {
-      io.stderr.write('annotatr carry-back: no hook payload on stdin and no --session given\n');
+      io.stderr.write('sidescreen carry-back: no hook payload on stdin and no --session given\n');
       return 1;
     }
     try {
       sessionId = parseUserPromptSubmitPayload(text).sessionId;
     } catch (error) {
       if (!(error instanceof HookPayloadError)) throw error;
-      io.stderr.write(`annotatr carry-back: ${error.message}\n`);
+      io.stderr.write(`sidescreen carry-back: ${error.message}\n`);
       return 1;
     }
   }

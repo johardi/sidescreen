@@ -26,7 +26,7 @@ test('the stored turn text is the payload message even when the transcript says 
   );
   const stateDir = join(dir, 'state');
   const result = await runCli(['ingest'], {
-    env: { ANNOTATR_STATE_DIR: stateDir },
+    env: { SIDESCREEN_STATE_DIR: stateDir },
     input: JSON.stringify({ ...fixture, transcript_path: transcript, last_assistant_message: 'FRESH HOOK TEXT' }),
   });
   assert.equal(result.code, 0, result.stderr);
@@ -43,7 +43,7 @@ test('ingest succeeds when the transcript path is unreadable, because it never o
   await mkdir(asDirectory);
   for (const transcriptPath of [join(dir, 'does-not-exist.jsonl'), asDirectory]) {
     const result = await runCli(['ingest'], {
-      env: { ANNOTATR_STATE_DIR: stateDir },
+      env: { SIDESCREEN_STATE_DIR: stateDir },
       input: JSON.stringify({ ...fixture, prompt_id: `p-${transcriptPath.length}`, transcript_path: transcriptPath, last_assistant_message: 'text' }),
     });
     assert.equal(result.code, 0, result.stderr);

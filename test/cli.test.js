@@ -11,7 +11,7 @@ import { startServer } from './server-helpers.js';
 import { runCli, tempDir } from './helpers.js';
 
 const execFileAsync = promisify(execFile);
-const bin = fileURLToPath(new URL('../bin/annotatr.js', import.meta.url));
+const bin = fileURLToPath(new URL('../bin/sidescreen.js', import.meta.url));
 const packageJsonPath = fileURLToPath(new URL('../package.json', import.meta.url));
 
 test('--version prints the package.json version', async () => {
@@ -36,12 +36,12 @@ test('an unknown command exits non-zero with usage on stderr', async () => {
 test('serve --open targets the current directory\'s project, and serve reports that address', async (t) => {
   assert.equal(projectUrl('http://127.0.0.1:7486/', '/w/proj'), `http://127.0.0.1:7486/projects/${projectId('/w/proj')}`);
 
-  const stateDir = await tempDir(t, 'annotatr-serve-');
+  const stateDir = await tempDir(t, 'sidescreen-serve-');
   // The child's process.cwd() is the physical path, so resolve the temp directory's symlinks first.
-  const project = await realpath(await tempDir(t, 'annotatr-cwd-'));
+  const project = await realpath(await tempDir(t, 'sidescreen-cwd-'));
   const child = spawn(process.execPath, [bin, 'serve', '--port', '0'], {
     cwd: project,
-    env: { ...process.env, ANNOTATR_STATE_DIR: stateDir },
+    env: { ...process.env, SIDESCREEN_STATE_DIR: stateDir },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   t.after(async () => {
@@ -56,7 +56,7 @@ test('serve --open targets the current directory\'s project, and serve reports t
     });
     child.once('close', (code) => reject(new Error(`serve exited early with ${code}`)));
   });
-  const base = /annotatr listening on (http:\/\/[^\s]+)/.exec(output)?.[1];
+  const base = /sidescreen listening on (http:\/\/[^\s]+)/.exec(output)?.[1];
   assert.ok(base);
   assert.ok(output.includes(`this project: ${projectUrl(base, project)} (${project})`), output);
   const page = await fetch(projectUrl(base, project));
@@ -68,7 +68,7 @@ test('a second serve on a port already in use says so in one line and exits 1', 
   const { port } = await startServer(t);
   const result = await runCli(['serve', '--port', String(port)]);
   assert.equal(result.code, 1);
-  assert.match(result.stderr, new RegExp(`^annotatr serve: 127\\.0\\.0\\.1:${port} is already in use\\.`));
+  assert.match(result.stderr, new RegExp(`^sidescreen serve: 127\\.0\\.0\\.1:${port} is already in use\\.`));
   assert.match(result.stderr, /--port/);
   assert.doesNotMatch(result.stderr, /at .*\.js:\d+/, 'no stack trace');
   assert.equal(result.stderr.trim().split('\n').length, 1);

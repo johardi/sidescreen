@@ -1,5 +1,5 @@
 /**
- * `annotatr ingest`: read a Stop hook payload from stdin and store the turn.
+ * `sidescreen ingest`: read a Stop hook payload from stdin and store the turn.
  *
  * This module has no filesystem access of its own. The turn's text comes from
  * the payload's `last_assistant_message` and from nowhere else. The one thing
@@ -40,7 +40,7 @@ export async function ingest(io, { readTitle = readSessionTitle } = {}) {
     payload = parseStopHookPayload(text);
   } catch (error) {
     if (error instanceof HookPayloadError) {
-      io.stderr.write(`annotatr ingest: ${error.message}\n`);
+      io.stderr.write(`sidescreen ingest: ${error.message}\n`);
       return 1;
     }
     throw error;

@@ -38,18 +38,18 @@ export function renderLandingPage({ projects }) {
 </li>`,
     )
     .join('\n');
-  const empty = `<p class="landing-empty">No project has delivered a turn yet. Run <code>annotatr init</code> in a project, restart Claude Code there, and finish a turn: the project appears here on its own.</p>`;
+  const empty = `<p class="landing-empty">No project has delivered a turn yet. Run <code>sidescreen init</code> in a project, restart Claude Code there, and finish a turn: the project appears here on its own.</p>`;
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>annotatr</title>
+<title>sidescreen</title>
 <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body class="landing">
 <header class="topbar">
-  <a class="brand" href="/">annotatr</a>
+  <a class="brand" href="/">sidescreen</a>
   <span class="topbar-meta">Choose a project</span>
 </header>
 <main class="landing-main">
@@ -73,7 +73,7 @@ export function renderWorkspacePage({ project, scope, turn, documentHtml, thread
   const scopeLabel = scope.kind === 'project' ? 'following the project' : scope.kind === 'session' ? 'following this session' : 'pinned turn';
   const warning = ingestionAvailable
     ? ''
-    : `<span class="topbar-warning">ingestion unavailable for ${escapeHtml(project.name)}: no Stop hook registered. Run <code>annotatr init</code> there.</span>`;
+    : `<span class="topbar-warning">ingestion unavailable for ${escapeHtml(project.name)}: no Stop hook registered. Run <code>sidescreen init</code> there.</span>`;
 
   const documentPane = turn
     ? `<article id="document" class="document">
@@ -128,12 +128,12 @@ ${documentHtml}
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>annotatr: ${escapeHtml(title)}</title>
+<title>sidescreen: ${escapeHtml(title)}</title>
 <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body class="workspace">
 <header class="topbar">
-  <a class="brand" href="/">annotatr</a>
+  <a class="brand" href="/">sidescreen</a>
   <a class="topbar-projects" href="/">All projects</a>
   <span class="topbar-project" title="${escapeHtml(project.cwd)}">${escapeHtml(project.name)}</span>
   <span class="topbar-path">${escapeHtml(project.cwd)}</span>

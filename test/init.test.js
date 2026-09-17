@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { BIN, runCli, tempDir } from './helpers.js';
 import { SKILLS_DIR, listSkillFiles } from '../src/init.js';
 import { hookCommand } from '../src/setup-hooks.js';
+import { EMISSION_HEADER } from '../src/carry-back.js';
 
 /** @param {string} path */
 const readJson = async (path) => JSON.parse(await readFile(path, 'utf8'));
@@ -17,14 +18,14 @@ test('init registers the Stop hook and installs the shipped skills under the inv
   const result = await runCli(['init'], { cwd });
   assert.equal(result.code, 0, result.stderr);
   assert.match(result.stdout, /Stop: added/);
-  assert.match(result.stdout, /skill annotatr\/SKILL\.md: added/);
+  assert.match(result.stdout, /skill sidescreen\/SKILL\.md: added/);
 
   const settings = await readJson(join(cwd, '.claude', 'settings.json'));
   const stopHooks = settings.hooks.Stop.flatMap((/** @type {{ hooks: { command: string }[] }} */ group) => group.hooks);
   assert.deepEqual(stopHooks, [{ type: 'command', command: hookCommand(BIN, 'ingest') }]);
 
   const shipped = await listSkillFiles();
-  assert.ok(shipped.includes('annotatr/SKILL.md'), 'annotatr ships its own skill');
+  assert.ok(shipped.includes('sidescreen/SKILL.md'), 'sidescreen ships its own skill');
   for (const path of shipped) {
     const installed = await readFile(join(cwd, '.claude', 'skills', path));
     const source = await readFile(join(SKILLS_DIR, path));
@@ -39,7 +40,7 @@ test('running init twice changes nothing the second time', async (t) => {
   const second = await runCli(['init'], { cwd });
   assert.equal(second.code, 0, second.stderr);
   assert.match(second.stdout, /Stop: unchanged/);
-  assert.match(second.stdout, /skill annotatr\/SKILL\.md: unchanged/);
+  assert.match(second.stdout, /skill sidescreen\/SKILL\.md: unchanged/);
   assert.match(second.stdout, /is up to date/);
   const settings = await readJson(join(cwd, '.claude', 'settings.json'));
   assert.equal(settings.hooks.Stop.length, 1);
@@ -49,16 +50,16 @@ test('a locally edited copy of a shipped skill is restored and reported as updat
   const cwd = await tempDir(t);
   const first = await runCli(['init'], { cwd });
   assert.equal(first.code, 0, first.stderr);
-  const skillPath = join(cwd, '.claude', 'skills', 'annotatr', 'SKILL.md');
+  const skillPath = join(cwd, '.claude', 'skills', 'sidescreen', 'SKILL.md');
   await writeFile(skillPath, '# edited locally\n', 'utf8');
 
   const second = await runCli(['init'], { cwd });
   assert.equal(second.code, 0, second.stderr);
-  assert.match(second.stdout, /skill annotatr\/SKILL\.md: updated/);
-  assert.equal(await readFile(skillPath, 'utf8'), await readFile(join(SKILLS_DIR, 'annotatr', 'SKILL.md'), 'utf8'));
+  assert.match(second.stdout, /skill sidescreen\/SKILL\.md: updated/);
+  assert.equal(await readFile(skillPath, 'utf8'), await readFile(join(SKILLS_DIR, 'sidescreen', 'SKILL.md'), 'utf8'));
 });
 
-test('skills that are not annotatr\'s are left alone', async (t) => {
+test('skills that are not sidescreen\'s are left alone', async (t) => {
   const cwd = await tempDir(t);
   const otherSkill = join(cwd, '.claude', 'skills', 'someone-else', 'SKILL.md');
   await mkdir(join(cwd, '.claude', 'skills', 'someone-else'), { recursive: true });
@@ -75,7 +76,7 @@ test('init --dry-run reports without creating anything', async (t) => {
   const result = await runCli(['init', '--dry-run'], { cwd });
   assert.equal(result.code, 0, result.stderr);
   assert.match(result.stdout, /Stop: added \(dry run\)/);
-  assert.match(result.stdout, /skill annotatr\/SKILL\.md: added \(dry run\)/);
+  assert.match(result.stdout, /skill sidescreen\/SKILL\.md: added \(dry run\)/);
   assert.match(result.stdout, /Would write/);
   assert.equal(await exists(join(cwd, '.claude')), false);
 });
@@ -113,4 +114,9 @@ test('every shipped skill has frontmatter whose name matches its directory', asy
     assert.match(frontmatter[1], new RegExp(`^name: ${dir}$`, 'm'), `${path} is named after its directory`);
     assert.match(frontmatter[1], /^description: \S/m, `${path} has a description`);
   }
+});
+
+test('the shipped skill quotes the carry-back header exactly as the CLI emits it', async () => {
+  const skill = await readFile(join(SKILLS_DIR, 'sidescreen', 'SKILL.md'), 'utf8');
+  assert.ok(skill.includes(`"${EMISSION_HEADER}"`), 'SKILL.md must quote EMISSION_HEADER verbatim, in double quotes');
 });

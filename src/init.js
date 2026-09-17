@@ -1,8 +1,8 @@
 /**
- * `annotatr init`: set up the project in the current directory in one step.
+ * `sidescreen init`: set up the project in the current directory in one step.
  *
- * Registers annotatr's hooks in ./.claude/settings.json and installs the
- * skills annotatr ships into ./.claude/skills/. Both steps are idempotent, and
+ * Registers sidescreen's hooks in ./.claude/settings.json and installs the
+ * skills sidescreen ships into ./.claude/skills/. Both steps are idempotent, and
  * both report what they changed rather than doing it silently.
  */
 
@@ -11,7 +11,7 @@ import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { projectSettingsPath, setupHooks } from './setup-hooks.js';
 
-/** The skills annotatr ships, one directory per skill. */
+/** The skills sidescreen ships, one directory per skill. */
 export const SKILLS_DIR = fileURLToPath(new URL('../skills/', import.meta.url));
 
 /**
@@ -46,7 +46,7 @@ export async function listSkillFiles(skillsDir = SKILLS_DIR) {
 /**
  * Copy the shipped skills into a project's skills directory. Files already
  * identical are left alone; files that differ are overwritten, because the
- * shipped copy is the one annotatr maintains. Files that are not annotatr's
+ * shipped copy is the one sidescreen maintains. Files that are not sidescreen's
  * are never touched.
  *
  * @param {{ cwd: string, skillsDir?: string, dryRun?: boolean }} options
@@ -80,7 +80,7 @@ export async function installSkills({ cwd, skillsDir = SKILLS_DIR, dryRun = fals
 }
 
 /**
- * Run `annotatr init`.
+ * Run `sidescreen init`.
  *
  * @param {{ cwd: string, binPath: string, stdout: NodeJS.WritableStream, stderr: NodeJS.WritableStream, dryRun?: boolean, skillsDir?: string }} options
  * @returns {Promise<number>} Exit code.

@@ -84,7 +84,7 @@ function splitHostHeader(value) {
   return { hostname: match[1], port: match[2] === undefined ? null : Number(match[2]) };
 }
 
-export class AnnotatrServer {
+export class SidescreenServer {
   /** @type {Set<http.ServerResponse>} */
   #eventClients = new Set();
   /** @type {Set<Promise<void>>} */
@@ -806,7 +806,7 @@ export function presentThread(thread) {
  * @param {{ store: import('./store.js').Store, dispatch: Dispatch, env?: NodeJS.ProcessEnv, cwd?: string, log?: (message: string) => void }} options
  */
 export function createServer(options) {
-  return new AnnotatrServer(options);
+  return new SidescreenServer(options);
 }
 
 /**

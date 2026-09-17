@@ -4,7 +4,7 @@
  * Every mutation is a read-modify-write under two locks. An in-process mutex
  * serializes callers inside one process, and a directory lock on disk
  * serializes across processes, because every Stop hook runs its own
- * `annotatr ingest` process and two turns can finish at the same instant.
+ * `sidescreen ingest` process and two turns can finish at the same instant.
  *
  * Schema version 2 added the `sessions` record. A version 1 file is read as
  * is, with its sessions derived from its turns, and is copied to a backup
@@ -39,17 +39,17 @@ export class StoreError extends Error {
 /**
  * Resolve the state directory from the environment.
  *
- * `ANNOTATR_STATE_DIR` wins. Otherwise `$XDG_STATE_HOME/annotatr`, falling
- * back to `~/.local/state/annotatr`.
+ * `SIDESCREEN_STATE_DIR` wins. Otherwise `$XDG_STATE_HOME/sidescreen`, falling
+ * back to `~/.local/state/sidescreen`.
  *
  * @param {NodeJS.ProcessEnv} env
  * @param {string} [home]
  * @returns {string}
  */
 export function defaultStateDir(env, home = homedir()) {
-  if (env.ANNOTATR_STATE_DIR) return env.ANNOTATR_STATE_DIR;
+  if (env.SIDESCREEN_STATE_DIR) return env.SIDESCREEN_STATE_DIR;
   const xdgStateHome = env.XDG_STATE_HOME || join(home, '.local', 'state');
-  return join(xdgStateHome, 'annotatr');
+  return join(xdgStateHome, 'sidescreen');
 }
 
 /** @returns {State} */

@@ -33,7 +33,7 @@ export function sampleTurn(overrides = {}) {
  * @param {{ dispatch?: import('../src/server.js').Dispatch, turns?: import('../src/types.js').Turn[], env?: NodeJS.ProcessEnv, stateDir?: string }} [options]
  */
 export async function startServer(t, { dispatch, turns = [sampleTurn()], env = { HOME: '/nonexistent' }, stateDir: givenStateDir } = {}) {
-  const stateDir = givenStateDir ?? (await tempDir(t, 'annotatr-server-'));
+  const stateDir = givenStateDir ?? (await tempDir(t, 'sidescreen-server-'));
   const store = new Store(stateDir);
   await store.update((state) => {
     for (const turn of turns) {

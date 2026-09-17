@@ -332,15 +332,15 @@ a { color: var(--accent); }
 
 /* Inline anchors */
 
-mark[data-annotatr-mark] {
+mark[data-sidescreen-mark] {
   background: var(--mark);
   color: inherit;
   border-radius: 2px;
   cursor: pointer;
   padding: 0;
 }
-mark[data-annotatr-mark][data-active] { background: var(--mark-active); }
-mark[data-annotatr-mark][data-index]::after {
+mark[data-sidescreen-mark][data-active] { background: var(--mark-active); }
+mark[data-sidescreen-mark][data-index]::after {
   content: attr(data-index);
   display: inline-block;
   vertical-align: super;

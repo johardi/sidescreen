@@ -6,7 +6,7 @@
  * is not an offset into the whole document, so an edit far away does not move
  * it, and it survives a re-render of the same markdown.
  *
- * The <mark> wrappers annotatr adds are "transparent": their children count
+ * The <mark> wrappers sidescreen adds are "transparent": their children count
  * as their parent's, so anchors computed on a marked-up document equal those
  * computed on the clean one.
  *
@@ -22,7 +22,7 @@
  * @property {string} text The anchored text at capture time.
  */
 
-export const MARK_ATTRIBUTE = 'data-annotatr-mark';
+export const MARK_ATTRIBUTE = 'data-sidescreen-mark';
 
 const ELEMENT_NODE = 1;
 const TEXT_NODE = 3;
@@ -37,7 +37,7 @@ export class AnchorError extends Error {
 }
 
 /**
- * Whether a node is one of annotatr's own wrappers, to be looked through.
+ * Whether a node is one of sidescreen's own wrappers, to be looked through.
  *
  * @param {Node} node
  * @returns {boolean}

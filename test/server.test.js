@@ -226,11 +226,11 @@ test('DELETE removes a turn and its threads behind the same-origin check, and sa
 
 test('the ingestion warning is about the selected project, not the directory the server started in', async (t) => {
   const { writeFile, mkdir } = await import('node:fs/promises');
-  const project = await tempDir(t, 'annotatr-hooked-');
+  const project = await tempDir(t, 'sidescreen-hooked-');
   await mkdir(join(project, '.claude'), { recursive: true });
   await writeFile(
     join(project, '.claude', 'settings.json'),
-    JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'node /x/bin/annotatr.js ingest' }] }] } }),
+    JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'node /x/bin/sidescreen.js ingest' }] }] } }),
     'utf8',
   );
   const hooked = sampleTurn({ promptId: 'hooked', sessionId: 'sess-hooked', cwd: project, message: 'Hooked project' });
@@ -376,9 +376,9 @@ const ANCHOR = { start: { path: [0], offset: 4 }, end: { path: [0], offset: 9 },
  * @param {Record<string, string>} [extraEnv]
  */
 async function startWithStubCodex(t, extraEnv = {}) {
-  const project = await tempDir(t, 'annotatr-project-');
+  const project = await tempDir(t, 'sidescreen-project-');
   const logPath = join(project, 'codex.log');
-  const env = { ...process.env, ANNOTATR_CODEX_BIN: STUB_CODEX, STUB_CODEX_LOG_TO: logPath, ANNOTATR_CONVENTIONS_FILES: join(project, 'none.md'), ...extraEnv };
+  const env = { ...process.env, SIDESCREEN_CODEX_BIN: STUB_CODEX, STUB_CODEX_LOG_TO: logPath, SIDESCREEN_CONVENTIONS_FILES: join(project, 'none.md'), ...extraEnv };
   const started = await startServer(t, { turns: [sampleTurn({ cwd: project })], dispatch: createCodexDispatch({ env }) });
   /** @returns {Promise<{ args: string[], prompt: string, subcommand: string, continuedSession: string|null }[]>} */
   const readLog = async () => (await readFile(logPath, 'utf8')).trim().split('\n').filter(Boolean).map((line) => JSON.parse(line));

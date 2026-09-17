@@ -1,11 +1,11 @@
 {
-  "name": "annotatr",
+  "name": "sidescreen",
   "version": "0.1.0",
   "description": "A second screen for coding-agent output: read a turn in the browser, annotate any range, ask a read-only sub-agent, carry back only your conclusions.",
   "type": "module",
   "license": "MIT",
   "bin": {
-    "annotatr": "bin/annotatr.js"
+    "sidescreen": "bin/sidescreen.js"
   },
   "files": [
     "bin",
