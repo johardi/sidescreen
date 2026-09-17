@@ -5,7 +5,8 @@ import { promisify } from 'node:util';
 import { readFile, realpath } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
-import { projectUrl } from '../src/cli.js';
+import { describeSubagents, projectUrl } from '../src/cli.js';
+import { dispatchSettings } from '../src/dispatch/backends.js';
 import { projectId } from '../src/store/projects.js';
 import { startServer } from './server-helpers.js';
 import { runCli, tempDir } from './helpers.js';
@@ -18,6 +19,23 @@ test('--version prints the package.json version', async () => {
   const { version } = JSON.parse(await readFile(packageJsonPath, 'utf8'));
   const { stdout } = await execFileAsync(process.execPath, [bin, '--version']);
   assert.equal(stdout.trim(), version);
+});
+
+test('7.1 the help lists the per-backend settings and no longer the single model setting', async () => {
+  const { stdout } = await execFileAsync(process.execPath, [bin, '--help']);
+  for (const name of ['SIDESCREEN_SUBAGENT', 'SIDESCREEN_CLAUDE_BIN', 'SIDESCREEN_CODEX_BIN', 'SIDESCREEN_CLAUDE_MODEL', 'SIDESCREEN_CODEX_MODEL', 'SIDESCREEN_DISPATCH_TIMEOUT_MS', 'SIDESCREEN_CONVENTIONS_FILES', 'SIDESCREEN_STATE_DIR']) {
+    assert.match(stdout, new RegExp(`^  ${name} `, 'm'), `help lists ${name}`);
+  }
+  assert.doesNotMatch(stdout, /SIDESCREEN_MODEL\b/);
+  assert.match(stdout, /@claude or @codex/);
+});
+
+test('7.1 the serve start-up line names the default backend, both CLIs, and the bounds', () => {
+  assert.equal(describeSubagents(dispatchSettings({})), "default claude (the parent's harness, on the reviewed turn's model); claude: claude; codex: codex; read-only, 300s timeout");
+  assert.equal(
+    describeSubagents(dispatchSettings({ SIDESCREEN_SUBAGENT: 'codex', SIDESCREEN_CODEX_BIN: '/opt/codex', SIDESCREEN_CODEX_MODEL: 'gpt-5', SIDESCREEN_CLAUDE_MODEL: 'opus', SIDESCREEN_DISPATCH_TIMEOUT_MS: '60000' })),
+    'default codex (configured); claude: claude (model opus); codex: /opt/codex (model gpt-5); read-only, 60s timeout',
+  );
 });
 
 test('an unknown command exits non-zero with usage on stderr', async () => {
@@ -58,6 +76,7 @@ test('serve --open targets the current directory\'s project, and serve reports t
   });
   const base = /sidescreen listening on (http:\/\/[^\s]+)/.exec(output)?.[1];
   assert.ok(base);
+  assert.match(output, /^sub-agent: default claude \(the parent's harness, on the reviewed turn's model\); claude: claude; codex: codex; read-only, 300s timeout$/m);
   assert.ok(output.includes(`this project: ${projectUrl(base, project)} (${project})`), output);
   const page = await fetch(projectUrl(base, project));
   assert.equal(page.status, 200, 'the project address works before the directory has delivered a turn');

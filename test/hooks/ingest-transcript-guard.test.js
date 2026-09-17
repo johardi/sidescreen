@@ -52,14 +52,16 @@ test('ingest succeeds when the transcript path is unreadable, because it never o
   assert.equal(Object.keys((await new Store(stateDir).read()).turns).length, 2);
 });
 
-test('the ingest modules have no filesystem access of their own, and the transcript path reaches only the title reader', async () => {
+test('the ingest modules have no filesystem access of their own, and the transcript path reaches only the label reader', async () => {
   for (const file of ['hooks/ingest.js', 'hooks/hook-payload.js', 'store/turns.js', 'store/sessions.js']) {
     const source = await readFile(join(SRC, file), 'utf8');
     assert.doesNotMatch(source, /['"]node:fs|['"]fs['"]|readFile|createReadStream|openSync|readline/, `${file} must not read files`);
     const handedTo = [...source.matchAll(/(\w+)\(\s*payload\.transcriptPath\s*\)/g)].map((match) => match[1]);
-    assert.deepEqual(new Set(handedTo), new Set(file === 'hooks/ingest.js' ? ['readTitle'] : []), `${file} may hand the transcript path to the title reader and nothing else`);
-    assert.doesNotMatch(source.replaceAll('readTitle(payload.transcriptPath)', ''), /transcriptPath\s*\)/, `${file} must not pass the transcript path to anything else`);
+    assert.deepEqual(new Set(handedTo), new Set(file === 'hooks/ingest.js' ? ['readLabels'] : []), `${file} may hand the transcript path to the label reader and nothing else`);
+    assert.doesNotMatch(source.replaceAll('readLabels(payload.transcriptPath)', ''), /transcriptPath\s*\)/, `${file} must not pass the transcript path to anything else`);
   }
   const titleReader = await readFile(join(SRC, 'hooks/session-title.js'), 'utf8');
   assert.doesNotMatch(titleReader, /lastAssistantMessage|last_assistant_message|\.message\b|"assistant"/, 'the title reader never looks at messages');
+  const labelReader = await readFile(join(SRC, 'hooks/transcript-labels.js'), 'utf8');
+  assert.doesNotMatch(labelReader, /lastAssistantMessage|last_assistant_message|\.content\b|\.text\b/, 'the label reader takes the model name from a record and never its text');
 });

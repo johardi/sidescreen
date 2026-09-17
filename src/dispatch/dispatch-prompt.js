@@ -1,22 +1,30 @@
 /**
  * The prompt a sub-agent receives for a side question. Built in one place so
- * that every dispatch carries the same rules and the same forwarded conventions.
+ * that every dispatch, on either backend, carries the same rules and the same
+ * forwarded conventions. Nothing here knows which CLI will read it.
  */
 
+import { parseBackendTag } from './backends.js';
+
 export const CONVENTIONS_HEADING = '## Conventions forwarded from the user';
+export const EARLIER_HEADING = '## Earlier in this thread';
+export const SINCE_HEADING = '## Since your last answer';
 const MAX_DOCUMENT_CHARS = 40_000;
 const WINDOW_CHARS = 15_000;
 
+/** @typedef {import('../store/threads.js').Exchange} Exchange */
+
 /**
  * @typedef {object} PromptInput
- * @property {string} question
+ * @property {string} question The question, with any leading backend tag removed.
  * @property {string} selectedText
  * @property {string} message The agent's turn output being reviewed.
  * @property {string} cwd
  * @property {string|null} transcriptPath
+ * @property {string|null} [turnSlicePath] The reviewed turn's own slice of the transcript, when it could be located.
  * @property {string} conventions Forwarded conventions text, possibly empty.
  * @property {string} promptId
- * @property {string[]} [priorExchanges] Earlier question/answer pairs in this thread, for cold starts only.
+ * @property {Exchange[]} [priorExchanges] Earlier answered exchanges in this thread, oldest first, for a new session that continues a thread.
  */
 
 /**
@@ -24,11 +32,7 @@ const WINDOW_CHARS = 15_000;
  * @returns {string}
  */
 export function buildPrompt(input) {
-  const transcriptLine =
-    input.transcriptPath === null
-      ? '1. `transcript`: not available for this turn.'
-      : `1. \`transcript\`: the main session's transcript at \`${input.transcriptPath}\`. It is JSONL; each line is a JSON object whose \`type\` is \`user\` or \`assistant\` with the message under \`message\`. This is the decision as it was made, and the best evidence for "why".`;
-
+  const prior = input.priorExchanges ?? [];
   return [
     'You are answering a side question about a coding agent\'s output, on behalf of the user who is reading that output.',
     'You run read-only. You may inspect files and the transcript. You must not modify anything.',
@@ -36,7 +40,7 @@ export function buildPrompt(input) {
     '',
     '## Where evidence may come from',
     '',
-    transcriptLine,
+    transcriptSource(input.transcriptPath, input.turnSlicePath ?? null),
     `2. \`code\`: the project at \`${input.cwd}\`. Authoritative for what happens, silent on why.`,
     `3. \`spec\`: project specification documents, such as \`openspec/\` under the project, README files, and design notes. Authored intent, which may be stale.`,
     '',
@@ -57,7 +61,16 @@ export function buildPrompt(input) {
     '',
     quote(input.selectedText),
     '',
-    ...(input.priorExchanges && input.priorExchanges.length > 0 ? ['## Earlier in this thread', '', ...input.priorExchanges, ''] : []),
+    ...(prior.length > 0
+      ? [
+          EARLIER_HEADING,
+          '',
+          'The user already asked about this range. The exchanges so far, as question and answer text only; you did not see how the answers were found.',
+          '',
+          describeExchanges(prior),
+          '',
+        ]
+      : []),
     '## The question',
     '',
     input.question.trim(),
@@ -67,6 +80,48 @@ export function buildPrompt(input) {
     'Respond as JSON matching the schema you were given: `answer` (markdown), `source` (one of code, transcript, spec, none), `sourceDetail` (a file and line, a transcript turn, or a spec heading; empty for none).',
     'Treat the selected range as what the user is pointing at, not as the limit of what you may read.',
   ].join('\n');
+}
+
+/**
+ * The transcript as an evidence source: where it is, how to read it, and
+ * where the reviewed turn's own slice is, or how to find the turn without one.
+ *
+ * @param {string|null} transcriptPath
+ * @param {string|null} turnSlicePath
+ */
+function transcriptSource(transcriptPath, turnSlicePath) {
+  if (transcriptPath === null) return '1. `transcript`: not available for this turn.';
+  const where = `1. \`transcript\`: the main session's transcript at \`${transcriptPath}\`. It is JSONL; each line is a JSON object whose \`type\` is \`user\` or \`assistant\` with the message under \`message\`. This is the decision as it was made, and the best evidence for "why".`;
+  if (turnSlicePath !== null) {
+    return `${where} The reviewed turn's own slice of it is at \`${turnSlicePath}\`, as Markdown: the user prompt that started the turn, the agent's reasoning where recorded, its tool calls with their results, and its final message. Start there; the full transcript holds the earlier turns.`;
+  }
+  return `${where} The reviewed turn could not be located in it when this question was asked; the transcript may lag. To find it, search the file for the opening words of the final message quoted below, then follow each record's \`parentUuid\` back to the \`user\` record that started the turn.`;
+}
+
+/**
+ * Earlier exchanges as text: question, then answer with its declared source.
+ * A question is shown without the tag that routed it, which is a note to
+ * sidescreen and not part of what was asked.
+ *
+ * @param {Exchange[]} exchanges Oldest first.
+ * @returns {string}
+ */
+export function describeExchanges(exchanges) {
+  return exchanges
+    .map((exchange, index) => {
+      const answer = exchange.answer;
+      const source = answer === null ? 'no answer' : answer.sourceDetail ? `source \`${answer.source}\`, ${answer.sourceDetail}` : `source \`${answer.source}\``;
+      return [
+        `### Exchange ${index + 1}, answered by ${exchange.backend}`,
+        '',
+        `Question: ${parseBackendTag(exchange.question.trim()).question.trim()}`,
+        '',
+        `Answer (${source}):`,
+        '',
+        answer === null ? '(none)' : answer.text.trim(),
+      ].join('\n');
+    })
+    .join('\n\n');
 }
 
 /**
@@ -106,13 +161,14 @@ function quote(text) {
  * The prompt for a question that continues an answered exchange.
  *
  * The forked session already holds the agent's output, the selected range,
- * and the earlier answers, so only the rules, the conventions, and the new
- * question travel.
+ * and the earlier answers, so only the rules, the conventions, the new
+ * question, and whatever other sub-agents answered since travel.
  *
- * @param {{ question: string, selectedText: string, conventions: string }} input
+ * @param {{ question: string, selectedText: string, conventions: string, sinceLastAnswer?: Exchange[] }} input
  * @returns {string}
  */
 export function buildFollowUpPrompt(input) {
+  const since = input.sinceLastAnswer ?? [];
   return [
     "A follow-up question in the same review. You already have the agent's output, the range the user selected, and your earlier answers in this conversation.",
     'You still run read-only, and you still declare exactly one source from code, transcript, spec, or none. "No documented intent found." with source `none` remains a complete answer.',
@@ -125,6 +181,16 @@ export function buildFollowUpPrompt(input) {
     '',
     quote(input.selectedText),
     '',
+    ...(since.length > 0
+      ? [
+          SINCE_HEADING,
+          '',
+          `The thread continued after your last answer with ${since.length === 1 ? 'an exchange' : 'exchanges'} answered by ${describeBackends(since)}. ${since.length === 1 ? 'It is' : 'They are'} given as question and answer text only; you did not see how ${since.length === 1 ? 'that answer' : 'those answers'} ${since.length === 1 ? 'was' : 'were'} found.`,
+          '',
+          describeExchanges(since),
+          '',
+        ]
+      : []),
     '## The question',
     '',
     input.question.trim(),
@@ -133,4 +199,10 @@ export function buildFollowUpPrompt(input) {
     '',
     'Respond as JSON matching the schema you were given: `answer` (markdown), `source` (one of code, transcript, spec, none), `sourceDetail` (a file and line, a transcript turn, or a spec heading; empty for none).',
   ].join('\n');
+}
+
+/** @param {Exchange[]} exchanges */
+function describeBackends(exchanges) {
+  const names = [...new Set(exchanges.map((exchange) => exchange.backend))];
+  return names.length === 1 ? `another sub-agent (${names[0]})` : `other sub-agents (${names.join(' and ')})`;
 }

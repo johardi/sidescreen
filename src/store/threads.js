@@ -2,9 +2,11 @@
  * Thread model. A thread is one line of questioning anchored to a range of a turn.
  *
  * Every answered exchange keeps the id of the sub-agent session whose last
- * message is that answer. Sessions are never resumed, so those ids stay valid
- * forever: a follow-up or a branch forks the session of the answer it
- * continues, and the new answer gets a new id of its own.
+ * message is that answer, together with the backend that minted it, since a
+ * session can only be forked by the CLI that created it. Sessions are never
+ * resumed, so those ids stay valid forever: a question that continues an
+ * answer forks the newest session of its own backend in the lineage, and the
+ * new answer gets a new id of its own.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -14,6 +16,7 @@ export { familyOf, rootOf, rootThreads } from '../web/public/thread-tree.js';
 /** @typedef {import('../types.js').State} State */
 /** @typedef {import('../types.js').Turn} Turn */
 /** @typedef {import('../web/public/anchor.js').Anchor} Anchor */
+/** @typedef {import('../dispatch/backends.js').Backend} Backend */
 
 /**
  * Where an answer's evidence came from. `undeclared` means the sub-agent
@@ -35,7 +38,9 @@ export const ANSWER_SOURCES = ['code', 'transcript', 'spec', 'none', 'undeclared
 /**
  * @typedef {object} Exchange One question and its answer within a thread.
  * @property {string} id
- * @property {string} question
+ * @property {string} question As the user typed it, tag included.
+ * @property {Backend} backend The backend that answers, decided when the question was routed.
+ * @property {string|null} model The model the answer ran on, when known.
  * @property {'pending'|'answered'|'failed'} status
  * @property {Answer|null} answer
  * @property {string|null} error Why the exchange failed, when status is `failed`.
@@ -54,15 +59,14 @@ export const ANSWER_SOURCES = ['code', 'transcript', 'spec', 'none', 'undeclared
  * @property {Anchor} anchor Where in the rendered turn the user pointed.
  * @property {string} selectedText The text the user selected, for display and as a fallback.
  * @property {Exchange[]} exchanges Oldest first.
- * @property {string|null} subAgentSessionId The session of the latest answered exchange, for convenience.
  * @property {string} createdAt ISO timestamp.
  */
 
 /**
- * @param {{ turn: Turn, anchor: Anchor, selectedText: string, question: string, parentThreadId?: string|null, branchedFromExchangeId?: string|null, now?: Date }} input
+ * @param {{ turn: Turn, anchor: Anchor, selectedText: string, question: string, backend: Backend, parentThreadId?: string|null, branchedFromExchangeId?: string|null, now?: Date }} input
  * @returns {Thread}
  */
-export function createThread({ turn, anchor, selectedText, question, parentThreadId = null, branchedFromExchangeId = null, now = new Date() }) {
+export function createThread({ turn, anchor, selectedText, question, backend, parentThreadId = null, branchedFromExchangeId = null, now = new Date() }) {
   return {
     id: randomUUID(),
     promptId: turn.promptId,
@@ -71,21 +75,23 @@ export function createThread({ turn, anchor, selectedText, question, parentThrea
     branchedFromExchangeId,
     anchor,
     selectedText,
-    exchanges: [createExchange(question, now)],
-    subAgentSessionId: null,
+    exchanges: [createExchange(question, backend, now)],
     createdAt: now.toISOString(),
   };
 }
 
 /**
  * @param {string} question
+ * @param {Backend} backend
  * @param {Date} [now]
  * @returns {Exchange}
  */
-export function createExchange(question, now = new Date()) {
+export function createExchange(question, backend, now = new Date()) {
   return {
     id: randomUUID(),
     question,
+    backend,
+    model: null,
     status: 'pending',
     answer: null,
     error: null,
@@ -96,13 +102,36 @@ export function createExchange(question, now = new Date()) {
 }
 
 /**
- * The newest exchange whose session a new question can fork, or null when
- * the thread has no answered exchange yet.
+ * The exchanges a question continues, oldest first.
+ *
+ * For a follow-up, the thread's own exchanges. For a branch, the parent's
+ * lineage cut at the branched-from exchange, so a branch never sees what its
+ * parent asked after the branch point. A branch of a branch composes.
+ *
+ * @param {Record<string, Thread>} threads Every thread, by id.
+ * @param {Thread} thread The thread being continued, or the parent being branched from.
+ * @param {string|null} [cutAtExchangeId] Include exchanges up to and including this one only.
+ * @returns {Exchange[]}
+ */
+export function lineageOf(threads, thread, cutAtExchangeId = null) {
+  /** @type {Exchange[]} */
+  let own = thread.exchanges;
+  if (cutAtExchangeId !== null) {
+    const index = thread.exchanges.findIndex((exchange) => exchange.id === cutAtExchangeId);
+    own = index < 0 ? [] : thread.exchanges.slice(0, index + 1);
+  }
+  const parent = thread.parentThreadId === null ? undefined : threads[thread.parentThreadId];
+  if (!parent || thread.branchedFromExchangeId === null || parent.id === thread.id) return own;
+  return [...lineageOf(threads, parent, thread.branchedFromExchangeId), ...own];
+}
+
+/**
+ * The latest answered exchange of a thread, or null.
  *
  * @param {Thread} thread
  * @returns {Exchange|null}
  */
-export function latestForkable(thread) {
+export function latestAnswered(thread) {
   for (let index = thread.exchanges.length - 1; index >= 0; index -= 1) {
     const exchange = thread.exchanges[index];
     if (exchange.status === 'answered' && exchange.subAgentSessionId) return exchange;

@@ -10,7 +10,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { HookPayloadError, parseUserPromptSubmitPayload } from '../hooks/hook-payload.js';
-import { readAll } from '../hooks/ingest.js';
+import { isInsideSubagent, readAll } from '../hooks/ingest.js';
 import { Store, defaultStateDir } from './store.js';
 
 /** @typedef {import('../types.js').State} State */
@@ -108,11 +108,19 @@ export async function emitCarryBack({ store, sessionId, stdout, now = new Date()
  * pending entries for that session, or nothing. Exit 0 either way, because a
  * failing hook would get in the user's way at exactly the wrong moment.
  *
+ * Inside a sub-agent sidescreen started, marked by `SIDESCREEN_SUBAGENT=1`,
+ * it prints nothing and marks nothing: the conclusions are owed to the main
+ * session, not to a side question.
+ *
  * @param {string[]} argv
  * @param {import('../cli.js').CliIo} io
  * @returns {Promise<number>}
  */
 export async function carryBackCommand(argv, io) {
+  if (isInsideSubagent(io.env)) {
+    if (!argv.includes('--session')) await readAll(io.stdin);
+    return 0;
+  }
   /** @type {string|null} */
   let sessionId = null;
   let emit = false;

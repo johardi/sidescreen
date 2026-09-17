@@ -480,6 +480,11 @@ button:disabled { opacity: 0.6; cursor: default; }
 .source-badge[data-source="none"] { background: var(--bg-muted); color: var(--fg-muted); border: 1px solid var(--line); }
 .source-badge[data-source="undeclared"] { background: var(--danger-soft); color: var(--danger); }
 .source-detail { overflow-wrap: anywhere; }
+.answer-by {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
 
 /* Landing page: choose a project */
 

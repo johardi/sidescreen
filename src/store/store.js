@@ -6,10 +6,14 @@
  * serializes across processes, because every Stop hook runs its own
  * `sidescreen ingest` process and two turns can finish at the same instant.
  *
- * Schema version 2 added the `sessions` record. A version 1 file is read as
- * is, with its sessions derived from its turns, and is copied to a backup
- * once before the first write at version 2 so rolling back the code is
- * restoring one file.
+ * Schema history:
+ * - Version 2 added the `sessions` record.
+ * - Version 3 added `model` to turns and `backend` and `model` to exchanges,
+ *   and dropped the thread-level copy of the sub-agent session id.
+ *
+ * An older file is read as is and upgraded in memory, and is copied to a
+ * backup once before the first write at the current version, so rolling back
+ * the code is restoring one file.
  */
 
 import { constants, copyFile, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
@@ -22,11 +26,14 @@ import { deriveSessions } from './sessions.js';
 /** @typedef {import('../types.js').State} State */
 
 export const STORE_FILE_NAME = 'store.json';
-export const STORE_VERSION = 2;
-export const VERSION_1_BACKUP_FILE_NAME = 'store.v1.bak';
+export const STORE_VERSION = 3;
+const SUPPORTED_VERSIONS = new Set([1, 2, STORE_VERSION]);
 const LOCK_DIR_NAME = 'store.lock';
 const LOCK_TIMEOUT_MS = 10_000;
 const LOCK_STALE_MS = 30_000;
+
+/** The backend that minted every sub-agent session before exchanges recorded one. */
+const LEGACY_BACKEND = /** @type {import('../dispatch/backends.js').Backend} */ ('codex');
 
 export class StoreError extends Error {
   /** @param {string} message */
@@ -52,6 +59,15 @@ export function defaultStateDir(env, home = homedir()) {
   return join(xdgStateHome, 'sidescreen');
 }
 
+/**
+ * The file an older store is copied to before the first write upgrades it.
+ *
+ * @param {number} version The version found on disk.
+ */
+export function backupFileName(version) {
+  return `store.v${version}.bak`;
+}
+
 /** @returns {State} */
 export function emptyState() {
   return { version: STORE_VERSION, turns: {}, sessions: {}, threads: {}, carryBack: {} };
@@ -65,7 +81,6 @@ export class Store {
     this.stateDir = stateDir;
     this.path = join(stateDir, STORE_FILE_NAME);
     this.lockPath = join(stateDir, LOCK_DIR_NAME);
-    this.backupPath = join(stateDir, VERSION_1_BACKUP_FILE_NAME);
   }
 
   /**
@@ -89,7 +104,7 @@ export class Store {
       await mkdir(this.stateDir, { recursive: true });
       return withDirectoryLock(this.lockPath, async () => {
         const { state, diskVersion } = await this.#readWithVersion();
-        if (diskVersion === 1) await this.#backUpVersion1();
+        if (diskVersion !== null && diskVersion < STORE_VERSION) await this.#backUp(diskVersion);
         await mutator(state);
         await writeAtomically(this.path, JSON.stringify(state, null, 2) + '\n');
         return state;
@@ -119,10 +134,14 @@ export class Store {
     return normalize(parsed, this.path);
   }
 
-  /** Copy the version 1 file aside, once. An existing backup is never overwritten. */
-  async #backUpVersion1() {
+  /**
+   * Copy an older file aside, once. An existing backup is never overwritten.
+   *
+   * @param {number} diskVersion
+   */
+  async #backUp(diskVersion) {
     try {
-      await copyFile(this.path, this.backupPath, constants.COPYFILE_EXCL);
+      await copyFile(this.path, join(this.stateDir, backupFileName(diskVersion)), constants.COPYFILE_EXCL);
     } catch (error) {
       if (/** @type {NodeJS.ErrnoException} */ (error).code !== 'EEXIST') throw error;
     }
@@ -139,18 +158,37 @@ function normalize(parsed, path) {
     throw new StoreError(`Store file ${path} does not contain an object`);
   }
   const record = /** @type {Record<string, unknown>} */ (parsed);
+  const version = record.version;
+  if (typeof version !== 'number' || !SUPPORTED_VERSIONS.has(version)) {
+    throw new StoreError(`Store file ${path} has unsupported version ${String(version)}`);
+  }
   const base = emptyState();
   const turns = /** @type {Record<string, import('../types.js').Turn>|null} */ (asRecord(record.turns)) ?? base.turns;
   const threads = /** @type {State['threads']|null} */ (asRecord(record.threads)) ?? base.threads;
   const carryBack = /** @type {State['carryBack']|null} */ (asRecord(record.carryBack)) ?? base.carryBack;
-  if (record.version === 1) {
-    return { state: { version: STORE_VERSION, turns, sessions: deriveSessions(turns), threads, carryBack }, diskVersion: 1 };
+  const sessions = version === 1 ? deriveSessions(turns) : (/** @type {State['sessions']|null} */ (asRecord(record.sessions)) ?? deriveSessions(turns));
+  return { state: upgrade({ version: STORE_VERSION, turns, sessions, threads, carryBack }), diskVersion: version };
+}
+
+/**
+ * Bring records written by an older version up to what the current one
+ * guarantees. Idempotent, so it runs on every read.
+ *
+ * @param {State} state
+ * @returns {State}
+ */
+function upgrade(state) {
+  for (const turn of Object.values(state.turns)) {
+    if (turn.model === undefined) turn.model = null;
   }
-  if (record.version === STORE_VERSION) {
-    const sessions = /** @type {State['sessions']|null} */ (asRecord(record.sessions)) ?? deriveSessions(turns);
-    return { state: { version: STORE_VERSION, turns, sessions, threads, carryBack }, diskVersion: STORE_VERSION };
+  for (const thread of Object.values(state.threads)) {
+    delete (/** @type {Record<string, unknown>} */ (/** @type {unknown} */ (thread))).subAgentSessionId;
+    for (const exchange of thread.exchanges ?? []) {
+      if (exchange.backend === undefined) exchange.backend = LEGACY_BACKEND;
+      if (exchange.model === undefined) exchange.model = null;
+    }
   }
-  throw new StoreError(`Store file ${path} has unsupported version ${String(record.version)}`);
+  return state;
 }
 
 /**

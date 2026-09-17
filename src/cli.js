@@ -8,7 +8,8 @@ import { defaultSettingsPath, projectSettingsPath, setupHooks } from './hooks/se
 import { Store, defaultStateDir } from './store/store.js';
 import { DEFAULT_PORT, createServer } from './web/server.js';
 import { projectId, projectPath } from './store/projects.js';
-import { createCodexDispatch, dispatchSettings } from './dispatch/dispatch.js';
+import { createDispatch } from './dispatch/dispatch.js';
+import { dispatchSettings } from './dispatch/backends.js';
 
 /**
  * @typedef {object} CliIo
@@ -41,8 +42,14 @@ Usage:
 
 Environment:
   SIDESCREEN_STATE_DIR                    Where the store lives (default: $XDG_STATE_HOME/sidescreen)
-  SIDESCREEN_CODEX_BIN                    Sub-agent command (default: codex)
-  SIDESCREEN_MODEL                        Model passed to the sub-agent (default: its own)
+  SIDESCREEN_SUBAGENT                     Who answers an untagged first question: parent, claude, or codex
+                                          (default: parent, the harness that produced the turn, on the
+                                          turn's own model). A question starting with @claude or @codex
+                                          picks a backend itself.
+  SIDESCREEN_CLAUDE_BIN                   Claude Code CLI command (default: claude)
+  SIDESCREEN_CODEX_BIN                    Codex CLI command (default: codex)
+  SIDESCREEN_CLAUDE_MODEL                 Model for claude answers (default: the reviewed turn's model)
+  SIDESCREEN_CODEX_MODEL                  Model for codex answers (default: the Codex CLI's own)
   SIDESCREEN_DISPATCH_TIMEOUT_MS          Time bound per question (default: 300000)
   SIDESCREEN_CONVENTIONS_FILES            Files forwarded as conventions, path-delimited
                                           (default: ~/.claude/CLAUDE.md, ./CLAUDE.md, ./AGENTS.md)
@@ -155,7 +162,7 @@ async function serve(argv, io) {
   const store = new Store(defaultStateDir(io.env));
   const server = createServer({
     store,
-    dispatch: createCodexDispatch({ env: io.env }),
+    dispatch: createDispatch({ env: io.env, stateDir: store.stateDir }),
     env: io.env,
     cwd,
     log: (message) => io.stderr.write(`${message}\n`),
@@ -175,7 +182,7 @@ async function serve(argv, io) {
   const project = projectUrl(url, cwd);
   io.stdout.write(`sidescreen listening on ${url}\n`);
   io.stdout.write(`this project: ${project} (${cwd})\n`);
-  io.stdout.write(`sub-agent: ${settings.codexBin} (read-only, ${Math.round(settings.timeoutMs / 1000)}s timeout${settings.model ? `, model ${settings.model}` : ''})\n`);
+  io.stdout.write(`sub-agent: ${describeSubagents(settings)}\n`);
   if (options.open === true) openInBrowser(project);
 
   await new Promise((resolve) => {
@@ -187,6 +194,19 @@ async function serve(argv, io) {
     process.once('SIGTERM', stop);
   });
   return 0;
+}
+
+/**
+ * One line on who answers questions: the default backend, each CLI, and the
+ * bounds every run keeps.
+ *
+ * @param {import('./dispatch/backends.js').DispatchSettings} settings
+ */
+export function describeSubagents(settings) {
+  const origin = settings.subagent === 'parent' ? "the parent's harness, on the reviewed turn's model" : 'configured';
+  const claude = `claude: ${settings.bins.claude}${settings.models.claude ? ` (model ${settings.models.claude})` : ''}`;
+  const codex = `codex: ${settings.bins.codex}${settings.models.codex ? ` (model ${settings.models.codex})` : ''}`;
+  return `default ${settings.defaultBackend} (${origin}); ${claude}; ${codex}; read-only, ${Math.round(settings.timeoutMs / 1000)}s timeout`;
 }
 
 /**

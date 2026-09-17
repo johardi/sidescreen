@@ -38,6 +38,7 @@ test('the first turn of a session creates it, labelled by its start time until a
     lastTurnAt: first.receivedAt,
   });
   assert.equal(sessionLabel(session), new Date(first.receivedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }));
+  assert.equal(first.model, null, 'no model until the caller supplies one');
 
   const second = await recordTurn(store, payload('p2'), { title: 'Hook installation', now: new Date('2026-03-01T10:05:00.000Z') });
   session = (await store.read()).sessions['session-1'];
@@ -67,10 +68,10 @@ test('removing a turn takes its threads, keeps carry-back, and drops the session
   for (const turn of [t1, t2, t3, otherSession]) upsertSession(state, turn);
   const anchor = { start: { path: [0], offset: 0 }, end: { path: [0], offset: 3 }, text: 'The' };
   for (const question of ['a', 'b', 'c']) {
-    const thread = createThread({ turn: t3, anchor, selectedText: 'The', question });
+    const thread = createThread({ turn: t3, anchor, selectedText: 'The', question, backend: 'claude' });
     state.threads[thread.id] = thread;
   }
-  const kept = createThread({ turn: t2, anchor, selectedText: 'The', question: 'kept' });
+  const kept = createThread({ turn: t2, anchor, selectedText: 'The', question: 'kept', backend: 'claude' });
   state.threads[kept.id] = kept;
   addEntry(state, { sessionId: 'session-1', text: 'A conclusion.' });
 

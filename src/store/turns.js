@@ -8,16 +8,17 @@ import { refreshSessionTimes, upsertSession } from './sessions.js';
  * Build a turn document from a parsed Stop hook payload.
  *
  * @param {StopHookPayload} payload
- * @param {Date} [now]
+ * @param {{ model?: string|null, now?: Date }} [options] The model the transcript named for the turn, when known.
  * @returns {Turn}
  */
-export function turnFromPayload(payload, now = new Date()) {
+export function turnFromPayload(payload, { model = null, now = new Date() } = {}) {
   return {
     promptId: payload.promptId,
     sessionId: payload.sessionId,
     cwd: payload.cwd,
     transcriptPath: payload.transcriptPath,
     message: payload.lastAssistantMessage,
+    model,
     receivedAt: now.toISOString(),
   };
 }
@@ -28,11 +29,11 @@ export function turnFromPayload(payload, now = new Date()) {
  *
  * @param {import('./store.js').Store} store
  * @param {StopHookPayload} payload
- * @param {{ title?: string|null, now?: Date }} [options] The session title, when the caller found one.
+ * @param {{ title?: string|null, model?: string|null, now?: Date }} [options] The labels the caller read from the transcript, when found.
  * @returns {Promise<Turn>}
  */
-export async function recordTurn(store, payload, { title = null, now = new Date() } = {}) {
-  const turn = turnFromPayload(payload, now);
+export async function recordTurn(store, payload, { title = null, model = null, now = new Date() } = {}) {
+  const turn = turnFromPayload(payload, { model, now });
   await store.update((state) => {
     state.turns[turn.promptId] = turn;
     upsertSession(state, turn, title);

@@ -19,7 +19,7 @@ test('the state directory falls back to XDG_STATE_HOME, then ~/.local/state', ()
 
 test('reading a missing store yields an empty state', async (t) => {
   const store = new Store(await tempDir(t));
-  assert.deepEqual(await store.read(), { version: 2, turns: {}, sessions: {}, threads: {}, carryBack: {} });
+  assert.deepEqual(await store.read(), { version: 3, turns: {}, sessions: {}, threads: {}, carryBack: {} });
 });
 
 test('a corrupt store file is an error, not a silent reset', async (t) => {
@@ -39,6 +39,7 @@ test('concurrent in-process updates are serialized and none is lost', async (t) 
           cwd: '/p',
           transcriptPath: null,
           message: `m${index}`,
+          model: null,
           receivedAt: new Date().toISOString(),
         };
       }),
@@ -71,7 +72,7 @@ test('the store file is written whole: no temporary files linger', async (t) => 
   assert.deepEqual(await readdir(stateDir), ['store.json']);
 });
 
-test('a version 1 store opens with sessions derived from its turns, and is backed up once on the first write', async (t) => {
+test('a version 1 store opens with sessions derived from its turns and upgraded, and is backed up once on the first write', async (t) => {
   const stateDir = await tempDir(t);
   const turn = (/** @type {string} */ promptId, /** @type {string} */ sessionId, /** @type {string} */ receivedAt) => ({
     promptId,
@@ -96,22 +97,23 @@ test('a version 1 store opens with sessions derived from its turns, and is backe
 
   const store = new Store(stateDir);
   const state = await store.read();
-  assert.equal(state.version, 2);
+  assert.equal(state.version, 3);
   assert.deepEqual(state.sessions, {
     'sess-a': { sessionId: 'sess-a', cwd: '/Users/example/proj', transcriptPath: '/t/sess-a.jsonl', title: null, startedAt: '2026-01-01T00:00:00.000Z', lastTurnAt: '2026-01-02T00:00:00.000Z' },
     'sess-b': { sessionId: 'sess-b', cwd: '/Users/example/proj', transcriptPath: '/t/sess-b.jsonl', title: null, startedAt: '2026-01-03T00:00:00.000Z', lastTurnAt: '2026-01-03T00:00:00.000Z' },
   });
   assert.deepEqual(state.threads, v1.threads);
   assert.deepEqual(state.carryBack, v1.carryBack);
+  assert.equal(state.turns.a1.model, null, 'a turn written before models were recorded reads null');
   assert.deepEqual(await readdir(stateDir), ['store.json'], 'reading alone writes nothing');
 
   await store.update(() => {});
   assert.deepEqual((await readdir(stateDir)).sort(), ['store.json', 'store.v1.bak']);
   assert.equal(await readFile(join(stateDir, 'store.v1.bak'), 'utf8'), original, 'the backup is the version 1 file byte for byte');
-  assert.equal(JSON.parse(await readFile(join(stateDir, 'store.json'), 'utf8')).version, 2);
+  assert.equal(JSON.parse(await readFile(join(stateDir, 'store.json'), 'utf8')).version, 3);
 
   await store.update((latest) => {
-    latest.turns.c1 = turn('c1', 'sess-c', '2026-01-04T00:00:00.000Z');
+    latest.turns.c1 = { ...turn('c1', 'sess-c', '2026-01-04T00:00:00.000Z'), model: null };
   });
   assert.equal(await readFile(join(stateDir, 'store.v1.bak'), 'utf8'), original, 'a later write leaves the backup alone');
   assert.equal(Object.keys((await new Store(stateDir).read()).turns).length, 4);
@@ -119,6 +121,82 @@ test('a version 1 store opens with sessions derived from its turns, and is backe
 
 test('a store with an unknown version is refused', async (t) => {
   const stateDir = await tempDir(t);
-  await writeFile(join(stateDir, 'store.json'), '{"version": 3, "turns": {}}', 'utf8');
-  await assert.rejects(new Store(stateDir).read(), /unsupported version 3/);
+  await writeFile(join(stateDir, 'store.json'), '{"version": 4, "turns": {}}', 'utf8');
+  await assert.rejects(new Store(stateDir).read(), /unsupported version 4/);
+});
+
+test('a version 2 store is upgraded on read: models null, old exchanges stamped codex, and backed up once on the first write', async (t) => {
+  const stateDir = await tempDir(t);
+  const turn = (/** @type {string} */ promptId, /** @type {string} */ sessionId, /** @type {string} */ receivedAt, cwd = '/Users/example/proj') => ({
+    promptId,
+    sessionId,
+    cwd,
+    transcriptPath: `/t/${sessionId}.jsonl`,
+    message: `m ${promptId}`,
+    receivedAt,
+  });
+  const exchange = (/** @type {string} */ id, /** @type {string|null} */ subAgentSessionId) => ({
+    id,
+    question: `q ${id}`,
+    status: subAgentSessionId === null ? 'failed' : 'answered',
+    answer: subAgentSessionId === null ? null : { text: 'a', source: 'code', sourceDetail: 'x.js:1' },
+    error: subAgentSessionId === null ? 'boom' : null,
+    subAgentSessionId,
+    askedAt: '2026-01-02T00:00:00.000Z',
+    answeredAt: '2026-01-02T00:00:01.000Z',
+  });
+  const v2 = {
+    version: 2,
+    turns: {
+      a1: turn('a1', 'sess-a', '2026-01-01T00:00:00.000Z'),
+      a2: turn('a2', 'sess-a', '2026-01-02T00:00:00.000Z'),
+    },
+    sessions: {
+      'sess-a': { sessionId: 'sess-a', cwd: '/Users/example/proj', transcriptPath: '/t/sess-a.jsonl', title: 'T', startedAt: '2026-01-01T00:00:00.000Z', lastTurnAt: '2026-01-02T00:00:00.000Z' },
+    },
+    threads: {
+      th: {
+        id: 'th',
+        promptId: 'a1',
+        sessionId: 'sess-a',
+        parentThreadId: null,
+        branchedFromExchangeId: null,
+        anchor: { start: { path: [0], offset: 0 }, end: { path: [0], offset: 1 }, text: 'm' },
+        selectedText: 'm',
+        exchanges: [exchange('e1', 's1'), exchange('e2', null)],
+        subAgentSessionId: 's1',
+        createdAt: '2026-01-02T00:00:00.000Z',
+      },
+    },
+    carryBack: { 'sess-a': [{ id: 'cb', text: 'keep me', threadId: 'th', addedAt: '2026-01-02T00:00:00.000Z', emittedAt: null }] },
+  };
+  const original = JSON.stringify(v2, null, 2);
+  await writeFile(join(stateDir, 'store.json'), original, 'utf8');
+
+  const store = new Store(stateDir);
+  const state = await store.read();
+  assert.equal(state.version, 3);
+  assert.equal(state.turns.a1.model, null);
+  assert.equal(state.turns.a2.model, null);
+  const [first, second] = state.threads.th.exchanges;
+  assert.equal(first.backend, 'codex', 'every session that existed before was minted by Codex');
+  assert.equal(first.model, null);
+  assert.equal(second.backend, 'codex');
+  assert.equal(first.subAgentSessionId, 's1');
+  assert.equal('subAgentSessionId' in state.threads.th, false, 'the thread-level copy is dropped');
+  assert.deepEqual(state.carryBack, v2.carryBack);
+  assert.deepEqual(await readdir(stateDir), ['store.json'], 'reading alone writes nothing');
+
+  await store.update(() => {});
+  assert.deepEqual((await readdir(stateDir)).sort(), ['store.json', 'store.v2.bak']);
+  assert.equal(await readFile(join(stateDir, 'store.v2.bak'), 'utf8'), original, 'the backup is the version 2 file byte for byte');
+  const written = JSON.parse(await readFile(join(stateDir, 'store.json'), 'utf8'));
+  assert.equal(written.version, 3);
+  assert.equal(written.threads.th.exchanges[0].backend, 'codex');
+
+  await store.update((latest) => {
+    latest.turns.a3 = { ...turn('a3', 'sess-a', '2026-01-03T00:00:00.000Z'), model: 'claude-fable-5-1' };
+  });
+  assert.equal(await readFile(join(stateDir, 'store.v2.bak'), 'utf8'), original, 'a later write leaves the backup alone');
+  assert.deepEqual((await readdir(stateDir)).sort(), ['store.json', 'store.v2.bak'], 'one backup, not one per write');
 });

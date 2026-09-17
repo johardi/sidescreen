@@ -110,7 +110,7 @@ ${documentHtml}
     ? `<form id="ask-popover" class="ask-popover" hidden>
   <blockquote class="ask-selection" id="ask-selection"></blockquote>
   <label class="visually-hidden" for="ask-question">Question</label>
-  <textarea id="ask-question" class="ask-question" rows="2" placeholder="Ask about this…" required></textarea>
+  <textarea id="ask-question" class="ask-question" rows="2" placeholder="Ask about this… (@claude or @codex to pick who answers)" required></textarea>
   <div class="ask-actions">
     <button type="button" class="button-secondary" id="ask-cancel">Cancel</button>
     <button type="submit" class="button-primary" id="ask-submit">Ask</button>

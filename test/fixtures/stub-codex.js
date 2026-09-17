@@ -15,7 +15,8 @@
  *
  * STUB_CODEX_ARGS_TO and STUB_CODEX_PROMPT_TO name files that receive the
  * argv and the prompt of the latest run. STUB_CODEX_LOG_TO names a file that
- * gets one JSON line per run appended, for tests with several dispatches.
+ * gets one JSON line per run appended, with the working directory and the
+ * sub-agent marker the run saw, for tests with several dispatches.
  * STUB_CODEX_DELAY_MS holds the answer back, to make runs overlap.
  *
  * Like the real CLI, it waits for end of input on stdin. Unlike the real CLI it
@@ -33,7 +34,9 @@ const continuedSession = subcommand === 'new' ? null : args[args.length - 2];
 
 if (process.env.STUB_CODEX_ARGS_TO) writeFileSync(process.env.STUB_CODEX_ARGS_TO, JSON.stringify(args));
 if (process.env.STUB_CODEX_PROMPT_TO) writeFileSync(process.env.STUB_CODEX_PROMPT_TO, prompt);
-if (process.env.STUB_CODEX_LOG_TO) appendFileSync(process.env.STUB_CODEX_LOG_TO, JSON.stringify({ args, prompt, subcommand, continuedSession }) + '\n');
+if (process.env.STUB_CODEX_LOG_TO) {
+  appendFileSync(process.env.STUB_CODEX_LOG_TO, JSON.stringify({ args, prompt, subcommand, continuedSession, cwd: process.cwd(), subagentMarker: process.env.SIDESCREEN_SUBAGENT ?? null }) + '\n');
+}
 
 const stdinTimer = setTimeout(() => {
   process.stderr.write('stub-codex: stdin is still open after 1s; a real codex would hang here\n');

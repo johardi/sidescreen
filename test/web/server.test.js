@@ -4,7 +4,9 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { isAllowedHost } from '../../src/web/server.js';
 import { preview } from '../../src/web/page.js';
-import { createCodexDispatch, READ_ONLY_CONFIG } from '../../src/dispatch/dispatch.js';
+import { createDispatch } from '../../src/dispatch/dispatch.js';
+import { READ_ONLY_CONFIG } from '../../src/dispatch/codex-adapter.js';
+import { EARLIER_HEADING, SINCE_HEADING } from '../../src/dispatch/dispatch-prompt.js';
 import { Store } from '../../src/store/store.js';
 import { FIXTURES, tempDir } from '../helpers.js';
 import { rawRequest, sampleTurn, startServer, turnHref, waitForAnswer } from '../server-helpers.js';
@@ -180,7 +182,7 @@ test('the sidebar keeps two concurrent sessions apart, orders them by latest tur
 });
 
 test('DELETE removes a turn and its threads behind the same-origin check, and says where the page goes next', async (t) => {
-  const turns = [sampleTurn(), sampleTurn({ promptId: 'prompt-2', receivedAt: '2026-01-02T00:00:00.000Z' })];
+  const turns = [sampleTurn({ receivedAt: '2026-01-01T00:00:00.000Z' }), sampleTurn({ promptId: 'prompt-2', receivedAt: '2026-01-02T00:00:00.000Z' })];
   const { url, port, store } = await startServer(t, {
     turns,
     dispatch: async () => ({ ok: true, answer: { text: 'a', source: 'none', sourceDetail: '' }, subAgentSessionId: null }),
@@ -294,7 +296,8 @@ test('creating a thread stores anchor, selection, and question, then records the
   assert.equal(answered.exchanges[0].answer.text, 'Asked about "quick" in prompt-1: Why quick?');
   assert.equal(answered.exchanges[0].answer.source, 'code');
   assert.match(answered.exchanges[0].answerHtml, /<p>Asked about/);
-  assert.equal(answered.subAgentSessionId, 'sub-1');
+  assert.equal(answered.exchanges[0].subAgentSessionId, 'sub-1');
+  assert.equal(answered.exchanges[0].backend, 'claude', 'an untagged first question goes to the default backend');
 });
 
 test('thread creation validates its body', async (t) => {
@@ -369,20 +372,58 @@ test('the turn list preview is the first line as plain text', () => {
 const STUB_CODEX = join(FIXTURES, 'stub-codex.js');
 const ANCHOR = { start: { path: [0], offset: 4 }, end: { path: [0], offset: 9 }, text: 'quick' };
 
+const STUB_CLAUDE = join(FIXTURES, 'stub-claude.js');
+
+/** @typedef {{ args: string[], prompt: string, subcommand: string, continuedSession: string|null, cwd: string, model?: string|null }} StubRun */
+
 /**
- * A server whose dispatcher is the real codex path, pointed at the stub.
+ * @param {string} path
+ * @returns {Promise<StubRun[]>} One entry per run, or none when the stub never ran.
+ */
+async function readStubLog(path) {
+  try {
+    return (await readFile(path, 'utf8')).trim().split('\n').filter(Boolean).map((line) => JSON.parse(line));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * A server whose dispatcher is the real dispatch path, pointed at both stubs,
+ * with Codex as the default so untagged questions exercise it.
  *
  * @param {import('node:test').TestContext} t
  * @param {Record<string, string>} [extraEnv]
  */
 async function startWithStubCodex(t, extraEnv = {}) {
+  return startWithStubs(t, { SIDESCREEN_SUBAGENT: 'codex', ...extraEnv });
+}
+
+/**
+ * A server whose dispatcher is the real dispatch path, pointed at a stub for
+ * each backend. The turn records the model that produced it.
+ *
+ * @param {import('node:test').TestContext} t
+ * @param {Record<string, string>} [extraEnv]
+ */
+async function startWithStubs(t, extraEnv = {}) {
   const project = await tempDir(t, 'sidescreen-project-');
-  const logPath = join(project, 'codex.log');
-  const env = { ...process.env, SIDESCREEN_CODEX_BIN: STUB_CODEX, STUB_CODEX_LOG_TO: logPath, SIDESCREEN_CONVENTIONS_FILES: join(project, 'none.md'), ...extraEnv };
-  const started = await startServer(t, { turns: [sampleTurn({ cwd: project })], dispatch: createCodexDispatch({ env }) });
-  /** @returns {Promise<{ args: string[], prompt: string, subcommand: string, continuedSession: string|null }[]>} */
-  const readLog = async () => (await readFile(logPath, 'utf8')).trim().split('\n').filter(Boolean).map((line) => JSON.parse(line));
-  return { ...started, readLog };
+  const stateDir = await tempDir(t, 'sidescreen-state-');
+  const codexLog = join(project, 'codex.log');
+  const claudeLog = join(project, 'claude.log');
+  const env = {
+    ...process.env,
+    HOME: '/nonexistent',
+    SIDESCREEN_CODEX_BIN: STUB_CODEX,
+    SIDESCREEN_CLAUDE_BIN: STUB_CLAUDE,
+    STUB_CODEX_LOG_TO: codexLog,
+    STUB_CLAUDE_LOG_TO: claudeLog,
+    SIDESCREEN_CONVENTIONS_FILES: join(project, 'none.md'),
+    SIDESCREEN_STATE_DIR: stateDir,
+    ...extraEnv,
+  };
+  const started = await startServer(t, { stateDir, env, turns: [sampleTurn({ cwd: project, model: 'claude-fable-5-1' })], dispatch: createDispatch({ env, stateDir }) });
+  return { ...started, project, readLog: () => readStubLog(codexLog), codex: () => readStubLog(codexLog), claude: () => readStubLog(claudeLog) };
 }
 
 /**
@@ -405,11 +446,12 @@ test('5.1 each answered exchange records its own sub-agent session id, and it su
   const { url, stateDir } = await startWithStubCodex(t);
   const thread = await createAnsweredThread(url);
   assert.match(thread.exchanges[0].subAgentSessionId, /^stub-thread-\d+$/);
-  assert.equal(thread.subAgentSessionId, thread.exchanges[0].subAgentSessionId);
+  assert.equal(thread.exchanges[0].backend, 'codex');
 
   const reloaded = (await new Store(stateDir).read()).threads[thread.id];
   assert.equal(reloaded.exchanges[0].subAgentSessionId, thread.exchanges[0].subAgentSessionId);
-  assert.equal(reloaded.subAgentSessionId, thread.subAgentSessionId);
+  assert.equal(reloaded.exchanges[0].backend, 'codex');
+  assert.equal('subAgentSessionId' in reloaded, false, 'no thread-level copy of the session id');
 });
 
 test('5.2 a follow-up forks the session of the answer it continues, and that answer keeps its id', async (t) => {
@@ -437,7 +479,6 @@ test('5.2 a follow-up forks the session of the answer it continues, and that ans
 
   assert.equal(updated.exchanges[0].subAgentSessionId, firstSession, "the continued answer's session id is unchanged");
   assert.ok(updated.exchanges[1].subAgentSessionId.startsWith(`fork-of-${firstSession}-`));
-  assert.equal(updated.subAgentSessionId, updated.exchanges[1].subAgentSessionId, 'the thread points at its latest answer');
 });
 
 test('a follow-up while the current answer is pending is refused', async (t) => {
@@ -499,7 +540,7 @@ test('5.3 a branch forks the exchange it was taken from, not the thread\'s lates
   assert.equal(log[2].subcommand, 'fork');
   assert.equal(log[2].continuedSession, first.subAgentSessionId, 'the branch forks the first answer, not the latest');
   assert.ok(answeredBranch.exchanges[0].subAgentSessionId.startsWith(`fork-of-${first.subAgentSessionId}-`));
-  assert.notEqual(answeredBranch.subAgentSessionId, parent.subAgentSessionId, 'branch and parent hold different session ids');
+  assert.notEqual(answeredBranch.exchanges[0].subAgentSessionId, second.subAgentSessionId, 'branch and parent hold different session ids');
 
   const parentAfter = await (await fetch(new URL(`/api/threads/${thread.id}`, url))).json();
   assert.equal(JSON.stringify(parentAfter.thread), parentBefore, 'answering the branch did not mutate the parent');
@@ -531,9 +572,187 @@ test('5.4 two branches dispatched at once both land on their own threads', async
   assert.equal(rightThread.exchanges[0].question, 'right?');
   assert.equal(leftThread.exchanges[0].status, 'answered');
   assert.equal(rightThread.exchanges[0].status, 'answered');
-  assert.notEqual(leftThread.subAgentSessionId, rightThread.subAgentSessionId);
-  assert.ok(leftThread.subAgentSessionId.startsWith(`fork-of-${source.subAgentSessionId}-`));
-  assert.ok(rightThread.subAgentSessionId.startsWith(`fork-of-${source.subAgentSessionId}-`));
+  assert.notEqual(leftThread.exchanges[0].subAgentSessionId, rightThread.exchanges[0].subAgentSessionId);
+  assert.ok(leftThread.exchanges[0].subAgentSessionId.startsWith(`fork-of-${source.subAgentSessionId}-`));
+  assert.ok(rightThread.exchanges[0].subAgentSessionId.startsWith(`fork-of-${source.subAgentSessionId}-`));
   assert.ok(elapsed < 2_000, `both ran concurrently (took ${elapsed}ms with a 300ms stub delay each)`);
   assert.equal((await readLog()).filter((entry) => entry.subcommand === 'fork').length, 2);
 });
+
+
+// ---- 3.5: who answers, and from where ---------------------------------------------
+
+/**
+ * @param {string} url
+ * @param {string} threadId
+ * @param {string} question
+ */
+async function followUp(url, threadId, question) {
+  const response = await postJson(url, `/api/threads/${threadId}/exchanges`, { question });
+  assert.equal(response.status, 201, await response.text());
+  return waitForAnswer(url, threadId);
+}
+
+test('3.5 an untagged first question goes to the parent\'s harness pinned to the turn\'s model; a leading @codex goes to Codex with the tag stripped from the prompt but kept in the question', async (t) => {
+  const { url, claude, codex } = await startWithStubs(t);
+  const viaDefault = await createAnsweredThread(url, 'Why quick?');
+  assert.equal(viaDefault.exchanges[0].backend, 'claude');
+  assert.equal(viaDefault.exchanges[0].status, 'answered');
+  assert.equal(viaDefault.exchanges[0].model, 'claude-fable-5-1', 'the model the answer ran on is recorded');
+  let claudeRuns = await claude();
+  assert.equal(claudeRuns.length, 1);
+  assert.equal(claudeRuns[0].model, 'claude-fable-5-1', 'pinned to the model the transcript named for the turn');
+  assert.equal(claudeRuns[0].subcommand, 'new');
+  assert.deepEqual(await codex(), [], 'Codex was not needed');
+
+  const tagged = await createAnsweredThread(url, '@codex Why quick?');
+  assert.equal(tagged.exchanges[0].backend, 'codex');
+  assert.equal(tagged.exchanges[0].question, '@codex Why quick?', 'stored as typed');
+  const codexRuns = await codex();
+  assert.equal(codexRuns.length, 1);
+  assert.ok(codexRuns[0].prompt.includes('## The question\n\nWhy quick?\n'), 'the tag is stripped from the prompt');
+  assert.ok(!codexRuns[0].prompt.includes('@codex'));
+  assert.equal(codexRuns[0].subcommand, 'new');
+
+  const upper = await createAnsweredThread(url, '@CODEX and this?');
+  assert.equal(upper.exchanges[0].backend, 'codex');
+  claudeRuns = await claude();
+  assert.equal(claudeRuns.length, 1, 'no further claude runs');
+
+  const bare = await postJson(url, '/api/turns/prompt-1/threads', { anchor: ANCHOR, selectedText: 'quick', question: '@codex' });
+  assert.equal(bare.status, 400);
+  assert.match((await bare.json()).error, /question after the backend tag/);
+});
+
+test('3.5 a tag in the middle of a question routes it with the token removed; an address or an escaped tag is text and the question travels unchanged', async (t) => {
+  const { url, claude, codex } = await startWithStubs(t);
+  const thread = await createAnsweredThread(url, 'Why quick?');
+  const plain = await followUp(url, thread.id, 'mail me@codex.com and \\@codex about @codex.com');
+  assert.equal(plain.exchanges[1].backend, 'claude', 'no tag, so the follow-up stays with the backend that answered last');
+  let claudeRuns = await claude();
+  assert.equal(claudeRuns.length, 2);
+  assert.equal(claudeRuns[1].subcommand, 'fork');
+  assert.equal(claudeRuns[1].continuedSession, thread.exchanges[0].subAgentSessionId);
+  assert.ok(claudeRuns[1].prompt.includes('mail me@codex.com and \\@codex about @codex.com'), 'the question reaches the sub-agent unchanged');
+  assert.deepEqual(await codex(), []);
+
+  const switched = await followUp(url, thread.id, 'does @codex agree with this?');
+  assert.equal(switched.exchanges[2].backend, 'codex');
+  assert.equal(switched.exchanges[2].question, 'does @codex agree with this?', 'stored as typed');
+  const codexRuns = await codex();
+  assert.equal(codexRuns.length, 1);
+  assert.ok(codexRuns[0].prompt.includes('## The question\n\ndoes agree with this?\n'), 'the token is removed from the prompt');
+  claudeRuns = await claude();
+  assert.equal(claudeRuns.length, 2, 'claude was not asked again');
+});
+
+test('3.5 sticky follow-ups, a switch that carries the thread as text, and a switch back that forks the earlier session with the gap', async (t) => {
+  const { url, claude, codex } = await startWithStubs(t, { STUB_CLAUDE_ANSWER_JSON: JSON.stringify({ answer: 'CLAUDE-A1 because mkdir is atomic.', source: 'transcript', sourceDetail: 'turn 7' }), STUB_CODEX_ANSWER_JSON: JSON.stringify({ answer: 'CODEX-ANSWER yes, agreed.', source: 'code', sourceDetail: 'src/store.js:12' }) });
+  const thread = await createAnsweredThread(url, 'Why is the lock a directory?');
+  const s1 = thread.exchanges[0].subAgentSessionId;
+
+  // Switch: no codex answer yet, so a cold start carrying the earlier exchange as text.
+  let updated = await followUp(url, thread.id, '@codex do you agree?');
+  assert.equal(updated.exchanges[1].backend, 'codex');
+  assert.equal(updated.exchanges[1].status, 'answered');
+  let codexRuns = await codex();
+  assert.equal(codexRuns.length, 1);
+  assert.equal(codexRuns[0].subcommand, 'new', 'no codex session to fork');
+  assert.ok(codexRuns[0].prompt.includes(EARLIER_HEADING));
+  assert.ok(codexRuns[0].prompt.includes('Question: Why is the lock a directory?'));
+  assert.ok(codexRuns[0].prompt.includes('CLAUDE-A1 because mkdir is atomic.'));
+  assert.ok(codexRuns[0].prompt.includes('answered by claude'));
+  assert.ok(codexRuns[0].prompt.includes('## The question\n\ndo you agree?\n'));
+  const s2 = updated.exchanges[1].subAgentSessionId;
+
+  // Sticky: no tag continues with codex, forking its own last session, no gap.
+  updated = await followUp(url, thread.id, 'What about a network drive?');
+  assert.equal(updated.exchanges[2].backend, 'codex');
+  codexRuns = await codex();
+  assert.equal(codexRuns.length, 2);
+  assert.equal(codexRuns[1].subcommand, 'fork');
+  assert.equal(codexRuns[1].continuedSession, s2);
+  assert.ok(!codexRuns[1].prompt.includes(SINCE_HEADING), 'nothing happened between its answers');
+  assert.ok(!codexRuns[1].prompt.includes(EARLIER_HEADING));
+
+  // Switch back: fork the newest claude session, with both codex exchanges as the gap.
+  updated = await followUp(url, thread.id, '@claude and your view?');
+  assert.equal(updated.exchanges[3].backend, 'claude');
+  assert.equal(updated.exchanges[3].status, 'answered');
+  const claudeRuns = await claude();
+  assert.equal(claudeRuns.length, 2);
+  assert.equal(claudeRuns[1].subcommand, 'fork');
+  assert.equal(claudeRuns[1].continuedSession, s1, 'the newest claude answer, not the thread\'s latest');
+  assert.ok(claudeRuns[1].prompt.includes(SINCE_HEADING));
+  assert.ok(claudeRuns[1].prompt.includes('another sub-agent (codex)'));
+  assert.ok(claudeRuns[1].prompt.includes('Question: do you agree?'), 'the tag is stripped in the gap too');
+  assert.ok(claudeRuns[1].prompt.includes('Question: What about a network drive?'));
+  assert.ok(claudeRuns[1].prompt.includes('CODEX-ANSWER yes, agreed.'));
+  assert.ok(!claudeRuns[1].prompt.includes("The agent's output being reviewed"), 'a fork does not repeat the document');
+  assert.ok(updated.exchanges[3].subAgentSessionId.startsWith(`fork-of-${s1}-`));
+});
+
+test('3.5 a tagged branch sees the lineage up to its branch point only, and an untagged branch stays with the answer it branches from', async (t) => {
+  const { url, claude, codex } = await startWithStubs(t);
+  const thread = await createAnsweredThread(url, 'FIRST-Q?');
+  await followUp(url, thread.id, 'SECOND-Q?');
+  const parent = await followUp(url, thread.id, 'THIRD-Q?');
+  const [first, second] = parent.exchanges;
+
+  const tagged = await postJson(url, `/api/threads/${thread.id}/branches`, { exchangeId: second.id, question: '@codex sideways?' });
+  assert.equal(tagged.status, 201);
+  const taggedBranch = await waitForAnswer(url, (await tagged.json()).thread.id);
+  assert.equal(taggedBranch.exchanges[0].backend, 'codex');
+  assert.equal(taggedBranch.exchanges[0].question, '@codex sideways?');
+  const codexRuns = await codex();
+  assert.equal(codexRuns.length, 1);
+  assert.equal(codexRuns[0].subcommand, 'new');
+  assert.ok(codexRuns[0].prompt.includes('Question: FIRST-Q?'));
+  assert.ok(codexRuns[0].prompt.includes('Question: SECOND-Q?'));
+  assert.ok(!codexRuns[0].prompt.includes('THIRD-Q?'), 'asked after the branch point');
+
+  const plain = await postJson(url, `/api/threads/${thread.id}/branches`, { exchangeId: first.id, question: 'plain sideways?' });
+  assert.equal(plain.status, 201);
+  const plainBranch = await waitForAnswer(url, (await plain.json()).thread.id);
+  assert.equal(plainBranch.exchanges[0].backend, 'claude');
+  const claudeRuns = await claude();
+  assert.equal(claudeRuns[claudeRuns.length - 1].subcommand, 'fork');
+  assert.equal(claudeRuns[claudeRuns.length - 1].continuedSession, first.subAgentSessionId, 'the branch forks the answer it was taken from');
+});
+
+test('3.5 a backend whose CLI cannot be started fails the exchange by name, and the other backend is not asked instead', async (t) => {
+  const { url, claude } = await startWithStubs(t, { SIDESCREEN_CODEX_BIN: '/nonexistent/codex' });
+  const response = await postJson(url, '/api/turns/prompt-1/threads', { anchor: ANCHOR, selectedText: 'quick', question: '@codex why?' });
+  assert.equal(response.status, 201);
+  const { thread } = await response.json();
+  const failed = await waitForAnswer(url, thread.id);
+  assert.equal(failed.exchanges[0].status, 'failed');
+  assert.equal(failed.exchanges[0].backend, 'codex');
+  assert.match(failed.exchanges[0].error, /Could not start the codex CLI/);
+  assert.match(failed.exchanges[0].error, /SIDESCREEN_CODEX_BIN/);
+  assert.deepEqual(await claude(), [], 'claude was not asked in its place');
+});
+
+test('3.5 SIDESCREEN_SUBAGENT=codex changes the default for untagged first questions, and a tag still overrides it', async (t) => {
+  const { url, claude, codex } = await startWithStubs(t, { SIDESCREEN_SUBAGENT: 'codex' });
+  const untagged = await createAnsweredThread(url, 'Why quick?');
+  assert.equal(untagged.exchanges[0].backend, 'codex');
+  assert.equal((await codex()).length, 1);
+  const tagged = await createAnsweredThread(url, '@claude Why quick?');
+  assert.equal(tagged.exchanges[0].backend, 'claude');
+  assert.equal((await claude()).length, 1);
+});
+
+// ---- 5.2: the presentation carries the backend and the model --------------------------
+
+test('5.2 thread and turn responses carry the backend and the model', async (t) => {
+  const { url } = await startWithStubs(t);
+  const thread = await createAnsweredThread(url, 'Why quick?');
+  const { thread: presented } = await (await fetch(new URL(`/api/threads/${thread.id}`, url))).json();
+  assert.equal(presented.exchanges[0].backend, 'claude');
+  assert.equal(presented.exchanges[0].model, 'claude-fable-5-1');
+  const turnPage = await (await fetch(new URL('/api/turns/prompt-1', url))).json();
+  assert.equal(turnPage.turn.model, 'claude-fable-5-1');
+  assert.equal(turnPage.threads[0].exchanges[0].backend, 'claude');
+});
+

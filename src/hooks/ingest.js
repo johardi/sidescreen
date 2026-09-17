@@ -2,16 +2,32 @@
  * `sidescreen ingest`: read a Stop hook payload from stdin and store the turn.
  *
  * This module has no filesystem access of its own. The turn's text comes from
- * the payload's `last_assistant_message` and from nowhere else. The one thing
- * read from the transcript is the session's title, through a reader that
- * returns a label and never sees a message, and whose failure changes nothing
- * about the turn.
+ * the payload's `last_assistant_message` and from nowhere else. The only
+ * things read from the transcript are labels, the session's title and the
+ * turn's model, through a reader that never sees a message and whose failure
+ * changes nothing about the turn.
+ *
+ * A sub-agent that sidescreen itself started runs with `SIDESCREEN_SUBAGENT=1`
+ * in its environment. Should the harness's hooks fire inside it anyway, this
+ * command does nothing, so a side question is never ingested as a turn.
  */
 
 import { HookPayloadError, parseStopHookPayload } from './hook-payload.js';
-import { readSessionTitle } from './session-title.js';
+import { readTranscriptLabels } from './transcript-labels.js';
 import { Store, defaultStateDir } from '../store/store.js';
 import { recordTurn } from '../store/turns.js';
+
+/** The environment marker sidescreen sets on every sub-agent it starts. */
+export const SUBAGENT_MARKER = 'SIDESCREEN_SUBAGENT';
+
+/**
+ * Whether this process is running inside a sub-agent sidescreen started.
+ *
+ * @param {NodeJS.ProcessEnv} env
+ */
+export function isInsideSubagent(env) {
+  return env[SUBAGENT_MARKER] === '1';
+}
 
 /**
  * Read a stream to completion.
@@ -29,11 +45,12 @@ export async function readAll(stream) {
 
 /**
  * @param {import('../cli.js').CliIo} io
- * @param {{ readTitle?: (transcriptPath: string|null) => Promise<string|null> }} [options] Injectable for tests.
+ * @param {{ readLabels?: (transcriptPath: string|null) => Promise<import('./transcript-labels.js').TranscriptLabels> }} [options] Injectable for tests.
  * @returns {Promise<number>} Exit code. Non-zero is a non-blocking hook error.
  */
-export async function ingest(io, { readTitle = readSessionTitle } = {}) {
+export async function ingest(io, { readLabels = readTranscriptLabels } = {}) {
   const text = await readAll(io.stdin);
+  if (isInsideSubagent(io.env)) return 0;
   /** @type {import('./hook-payload.js').StopHookPayload} */
   let payload;
   try {
@@ -46,7 +63,7 @@ export async function ingest(io, { readTitle = readSessionTitle } = {}) {
     throw error;
   }
   const store = new Store(defaultStateDir(io.env));
-  const title = await readTitle(payload.transcriptPath);
-  await recordTurn(store, payload, { title });
+  const { title, model } = await readLabels(payload.transcriptPath);
+  await recordTurn(store, payload, { title, model });
   return 0;
 }

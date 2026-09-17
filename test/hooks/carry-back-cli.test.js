@@ -65,6 +65,21 @@ test('--session names the session when there is no hook payload; bad invocations
   assert.match(badPayload.stderr, /session_id/);
 });
 
+test('inside a sub-agent sidescreen started, --emit prints nothing and leaves the entries pending for the main session', async (t) => {
+  const stateDir = await tempDir(t);
+  await new Store(stateDir).update((state) => {
+    addEntry(state, { sessionId: 'sess-a', text: 'Owed to the terminal.' });
+  });
+  const inside = await runCli(['carry-back', '--emit'], { env: { SIDESCREEN_STATE_DIR: stateDir, SIDESCREEN_SUBAGENT: '1' }, input: promptSubmitPayload('sess-a') });
+  assert.deepEqual(inside, { code: 0, stdout: '', stderr: '' });
+  const byFlagInside = await runCli(['carry-back', '--emit', '--session', 'sess-a'], { env: { SIDESCREEN_STATE_DIR: stateDir, SIDESCREEN_SUBAGENT: '1' } });
+  assert.deepEqual(byFlagInside, { code: 0, stdout: '', stderr: '' });
+  assert.equal((await new Store(stateDir).read()).carryBack['sess-a'][0].emittedAt, null, 'still pending');
+
+  const outside = await runCli(['carry-back', '--emit'], { env: { SIDESCREEN_STATE_DIR: stateDir }, input: promptSubmitPayload('sess-a') });
+  assert.equal(outside.stdout, `${EMISSION_HEADER}\n- Owed to the terminal.\n`, 'the next unmarked prompt receives it');
+});
+
 test('6.3 setup hooks registers the UserPromptSubmit hook, once per event, however often it runs', async (t) => {
   const settingsPath = join(await tempDir(t), 'settings.json');
   for (const expected of [/UserPromptSubmit: added/, /UserPromptSubmit: unchanged/, /UserPromptSubmit: unchanged/]) {

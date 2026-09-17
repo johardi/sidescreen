@@ -1,62 +1,46 @@
 /**
  * Dispatching a side question to a read-only sub-agent.
  *
- * The read-only guarantee is structural: `buildCommand` has no parameter for
- * the sandbox policy, so no caller can widen it. Standard input is always
- * `/dev/null`, because a sub-agent CLI handed an open pipe waits on it forever.
+ * The dispatcher knows a backend only by name. It composes one prompt, the
+ * same for either CLI, hands it to that backend's adapter for the command
+ * line, runs the command with stdin closed and a time bound, and reads the
+ * answer the adapter extracts. Standard input is always `/dev/null`, because
+ * a sub-agent CLI handed an open pipe waits on it forever.
  */
 
 import { spawn as nodeSpawn } from 'node:child_process';
+import { readFile, stat } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildFollowUpPrompt, buildPrompt } from './dispatch-prompt.js';
 import { loadConventions } from './conventions.js';
+import { BIN_SETTINGS, dispatchSettings } from './backends.js';
+import { claudeAdapter } from './claude-adapter.js';
+import { codexAdapter } from './codex-adapter.js';
+import { writeTurnSlice } from './turn-slice.js';
+import { normalizeWhitespace } from './turn-slice.js';
+import { defaultStateDir } from '../store/store.js';
+import { SUBAGENT_MARKER } from '../hooks/ingest.js';
 
 /** @typedef {import('../store/threads.js').Answer} Answer */
+/** @typedef {import('../store/threads.js').Exchange} Exchange */
+/** @typedef {import('./backends.js').Backend} Backend */
+/** @typedef {import('./backends.js').DispatchSettings} DispatchSettings */
+/** @typedef {import('./adapter.js').DispatchTarget} DispatchTarget */
+/** @typedef {import('./adapter.js').BackendAdapter} BackendAdapter */
 /** @typedef {import('../web/server.js').DispatchInput} DispatchInput */
 /** @typedef {import('../web/server.js').DispatchResult} DispatchResult */
 
-/** The only sandbox policy a side question may run under. */
-export const SANDBOX_POLICY = 'read-only';
-/** The same policy as a config override, for subcommands without `-s`. */
-export const READ_ONLY_CONFIG = `sandbox_mode="${SANDBOX_POLICY}"`;
+export { DEFAULT_TIMEOUT_MS } from './backends.js';
+
 /** Node's spawn value that attaches /dev/null to a stdio slot. */
 export const STDIN_CLOSED = 'ignore';
-export const DEFAULT_TIMEOUT_MS = 300_000;
-export const DEFAULT_CODEX_BIN = 'codex';
 export const ANSWER_SCHEMA_PATH = fileURLToPath(new URL('./answer-schema.json', import.meta.url));
 const KILL_GRACE_MS = 2_000;
+const SESSION_NAME_CHARS = 60;
 
-/**
- * Where a dispatch starts from.
- *
- * @typedef {{ mode: 'new', cwd: string } | { mode: 'resume', sessionId: string } | { mode: 'fork', sessionId: string }} DispatchTarget
- */
-
-/**
- * Build the sub-agent command line. There is deliberately no way to pass a
- * sandbox policy: every command this returns is read-only.
- *
- * @param {{ target: DispatchTarget, prompt: string, schemaPath?: string, codexBin?: string, model?: string }} options
- * @returns {{ command: string, args: string[] }}
- */
-export function buildCommand({ target, prompt, schemaPath = ANSWER_SCHEMA_PATH, codexBin = DEFAULT_CODEX_BIN, model }) {
-  const output = ['--json', '--output-schema', schemaPath];
-  const modelArgs = model ? ['-m', model] : [];
-  /** @type {string[]} */
-  let args;
-  switch (target.mode) {
-    case 'new':
-      args = ['exec', '-s', SANDBOX_POLICY, '-c', READ_ONLY_CONFIG, '-C', target.cwd, '--skip-git-repo-check', ...output, ...modelArgs, prompt];
-      break;
-    case 'resume':
-      args = ['exec', 'resume', '-c', READ_ONLY_CONFIG, '--skip-git-repo-check', ...output, ...modelArgs, target.sessionId, prompt];
-      break;
-    case 'fork':
-      args = ['exec', 'fork', '-c', READ_ONLY_CONFIG, '--skip-git-repo-check', ...output, ...modelArgs, target.sessionId, prompt];
-      break;
-  }
-  return { command: codexBin, args };
-}
+/** @type {Record<Backend, BackendAdapter>} */
+export const ADAPTERS = { claude: claudeAdapter, codex: codexAdapter };
 
 /**
  * @typedef {object} RunResult
@@ -117,54 +101,6 @@ export function runCommand({ command, args, cwd, timeoutMs, spawn = nodeSpawn, e
   });
 }
 
-/**
- * @typedef {object} CodexEvents
- * @property {string|null} threadId The sub-agent session id, from `thread.started`.
- * @property {string|null} finalText The last agent message.
- * @property {string[]} errors Error messages the sub-agent reported.
- */
-
-/**
- * Pull what matters out of `codex exec --json` output.
- *
- * @param {string} stdout
- * @returns {CodexEvents}
- */
-export function parseCodexEvents(stdout) {
-  /** @type {CodexEvents} */
-  const result = { threadId: null, finalText: null, errors: [] };
-  for (const line of stdout.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith('{')) continue;
-    /** @type {Record<string, unknown>} */
-    let event;
-    try {
-      event = JSON.parse(trimmed);
-    } catch {
-      continue;
-    }
-    switch (event.type) {
-      case 'thread.started':
-        if (typeof event.thread_id === 'string') result.threadId = event.thread_id;
-        break;
-      case 'item.completed': {
-        const item = /** @type {{ type?: string, text?: string }|undefined} */ (event.item);
-        if (item?.type === 'agent_message' && typeof item.text === 'string') result.finalText = item.text;
-        break;
-      }
-      case 'error':
-      case 'turn.failed': {
-        const message = event.message ?? /** @type {{ message?: string }|undefined} */ (event.error)?.message;
-        if (typeof message === 'string') result.errors.push(message);
-        break;
-      }
-      default:
-        break;
-    }
-  }
-  return result;
-}
-
 const SOURCES = new Set(['code', 'transcript', 'spec', 'none']);
 const TRAILING_SOURCE_LINE = /^\s*source\s*:\s*(code|transcript|spec|none)\b\s*(?:[-:,]\s*(.*))?$/i;
 
@@ -212,86 +148,131 @@ export function parseAnswer(finalText) {
 }
 
 /**
+ * A recognizable name for a sub-agent session, for CLIs that keep one.
+ *
+ * @param {string} question
+ */
+export function sessionNameFor(question) {
+  const short = normalizeWhitespace(question);
+  return `sidescreen: ${short.length > SESSION_NAME_CHARS ? `${short.slice(0, SESSION_NAME_CHARS - 1)}…` : short}`;
+}
+
+/**
  * @typedef {object} DispatchOptions
- * @property {DispatchTarget} [target] Overrides the target the server chose; defaults to a new session in the turn's cwd.
  * @property {NodeJS.ProcessEnv} [env]
- * @property {string} [codexBin]
+ * @property {DispatchSettings} [settings] Read from `env` when omitted.
+ * @property {string} [stateDir] Where the turn slice is written; read from `env` when omitted.
  * @property {number} [timeoutMs]
- * @property {string} [model]
  * @property {string} [conventions] Pre-loaded conventions text; loaded from disk when omitted.
  * @property {typeof nodeSpawn} [spawn]
  * @property {string} [schemaPath]
  */
 
 /**
- * Answer one exchange by running the sub-agent once.
+ * Answer one exchange by running its backend once.
  *
- * @param {Omit<DispatchInput, 'target'> & DispatchOptions} input
+ * @param {DispatchInput & DispatchOptions} input
  * @returns {Promise<DispatchResult>}
  */
 export async function dispatchQuestion(input) {
   const env = input.env ?? process.env;
-  const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const settings = input.settings ?? dispatchSettings(env);
+  const backend = input.exchange.backend;
+  const adapter = ADAPTERS[backend];
+  const bin = settings.bins[backend];
+  const timeoutMs = input.timeoutMs ?? settings.timeoutMs;
+  const schemaPath = input.schemaPath ?? ANSWER_SCHEMA_PATH;
   const conventions = input.conventions ?? (await loadConventions({ cwd: input.turn.cwd, env })).text;
-  const target = input.target ?? { mode: 'new', cwd: input.turn.cwd };
-  const prompt =
-    target.mode === 'new'
-      ? buildPrompt({
-          question: input.exchange.question,
-          selectedText: input.thread.selectedText,
-          message: input.turn.message,
-          cwd: input.turn.cwd,
-          transcriptPath: input.turn.transcriptPath,
-          conventions,
-          promptId: input.turn.promptId,
-        })
-      : buildFollowUpPrompt({ question: input.exchange.question, selectedText: input.thread.selectedText, conventions });
-  const { command, args } = buildCommand({ target, prompt, schemaPath: input.schemaPath, codexBin: input.codexBin, model: input.model });
+  const { turn, thread, target } = input;
+
+  /** @type {string} */
+  let prompt;
+  /** @type {string[]} */
+  const readDirs = [];
+  if (turn.transcriptPath !== null) readDirs.push(dirname(turn.transcriptPath));
+  if (target.mode === 'new') {
+    const slicePath = await writeTurnSlice({ stateDir: input.stateDir ?? defaultStateDir(env), turn });
+    if (slicePath !== null) readDirs.push(dirname(slicePath));
+    prompt = buildPrompt({
+      question: input.question,
+      selectedText: thread.selectedText,
+      message: turn.message,
+      cwd: turn.cwd,
+      transcriptPath: turn.transcriptPath,
+      turnSlicePath: slicePath,
+      conventions,
+      promptId: turn.promptId,
+      priorExchanges: input.priorExchanges,
+    });
+  } else {
+    prompt = buildFollowUpPrompt({ question: input.question, selectedText: thread.selectedText, conventions, sinceLastAnswer: input.gap });
+  }
+
+  const model = backend === 'claude' ? settings.models.claude ?? turn.model ?? undefined : settings.models.codex;
+  const { command, args } = adapter.command({
+    bin,
+    target,
+    prompt,
+    cwd: turn.cwd,
+    schemaPath,
+    schemaText: await readFile(schemaPath, 'utf8'),
+    model,
+    readDirs: await existingDirectories(readDirs),
+    sessionName: sessionNameFor(input.question),
+  });
 
   /** @type {RunResult} */
   let run;
   try {
-    run = await runCommand({ command, args, cwd: input.turn.cwd, timeoutMs, spawn: input.spawn, env });
+    run = await runCommand({ command, args, cwd: turn.cwd, timeoutMs, spawn: input.spawn, env: { ...env, [SUBAGENT_MARKER]: '1' } });
   } catch (error) {
-    return { ok: false, error: `Could not start ${command}: ${/** @type {Error} */ (error).message}` };
+    return {
+      ok: false,
+      error: `Could not start the ${backend} CLI (${command}): ${/** @type {Error} */ (error).message}. Set ${BIN_SETTINGS[backend]} to where it is installed.`,
+    };
   }
 
   if (run.timedOut) {
-    return { ok: false, error: `The sub-agent did not answer within ${Math.round(timeoutMs / 1000)}s and was stopped.` };
+    return { ok: false, error: `The ${backend} sub-agent did not answer within ${Math.round(timeoutMs / 1000)}s and was stopped.` };
   }
 
-  const events = parseCodexEvents(run.stdout);
-  const answer = parseAnswer(events.finalText);
+  const output = adapter.parseOutput(run.stdout);
+  const answer = parseAnswer(output.finalText);
   if (answer === null) {
-    const detail = events.errors.length > 0 ? events.errors.join('; ') : lastNonEmptyLine(run.stderr);
+    const detail = output.errors.length > 0 ? output.errors.join('; ') : lastNonEmptyLine(run.stderr);
     const exit = run.exitCode === null ? `signal ${run.signal}` : `exit code ${run.exitCode}`;
-    return { ok: false, error: `The sub-agent produced no answer (${exit})${detail ? `: ${detail}` : '.'}` };
+    return { ok: false, error: `The ${backend} sub-agent produced no answer (${exit})${detail ? `: ${detail}` : '.'}` };
   }
-  return { ok: true, answer, subAgentSessionId: events.threadId };
+  return { ok: true, answer, subAgentSessionId: output.sessionId, model: output.model ?? model ?? null };
 }
 
 /**
  * The server-facing dispatcher, configured from the environment.
  *
- * @param {{ env: NodeJS.ProcessEnv, spawn?: typeof nodeSpawn }} options
+ * @param {{ env: NodeJS.ProcessEnv, spawn?: typeof nodeSpawn, stateDir?: string }} options
  * @returns {import('../web/server.js').Dispatch}
  */
-export function createCodexDispatch({ env, spawn }) {
+export function createDispatch({ env, spawn, stateDir }) {
   const settings = dispatchSettings(env);
-  return (input) => dispatchQuestion({ ...input, env, spawn, ...settings });
+  return (input) => dispatchQuestion({ ...input, env, spawn, settings, stateDir });
 }
 
 /**
- * @param {NodeJS.ProcessEnv} env
- * @returns {{ codexBin: string, timeoutMs: number, model: string|undefined }}
+ * @param {string[]} candidates
+ * @returns {Promise<string[]>} The candidates that exist as directories, deduplicated, in order.
  */
-export function dispatchSettings(env) {
-  const timeout = Number(env.SIDESCREEN_DISPATCH_TIMEOUT_MS);
-  return {
-    codexBin: env.SIDESCREEN_CODEX_BIN || DEFAULT_CODEX_BIN,
-    timeoutMs: Number.isFinite(timeout) && timeout > 0 ? timeout : DEFAULT_TIMEOUT_MS,
-    model: env.SIDESCREEN_MODEL || undefined,
-  };
+async function existingDirectories(candidates) {
+  /** @type {string[]} */
+  const dirs = [];
+  for (const candidate of candidates) {
+    if (dirs.includes(candidate)) continue;
+    try {
+      if ((await stat(candidate)).isDirectory()) dirs.push(candidate);
+    } catch {
+      // Not there; nothing to grant.
+    }
+  }
+  return dirs;
 }
 
 /** @param {string} text */

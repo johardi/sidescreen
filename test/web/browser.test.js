@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { openBrowser, dragSelect } from '../browser-helpers.js';
 import { sampleTurn, startServer, waitForAnswer } from '../server-helpers.js';
 import { runCli } from '../helpers.js';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 /** @type {import('../../src/web/server.js').Dispatch} */
 const codeSourcedStub = async ({ exchange }) => ({
@@ -297,6 +298,55 @@ test('5.5 five sibling branches stay usable as tabs at 400px width', async (t) =
   const widths = await page.evaluate(() => ({ viewport: window.innerWidth, html: document.documentElement.scrollWidth }));
   assert.ok(widths.html <= widths.viewport, 'no horizontal page scroll');
   assert.equal(await page.locator('.thread-chip').count(), 1, 'branches are not extra top-level threads');
+  assert.deepEqual(consoleErrors, []);
+});
+
+// ---- 5.1: which backend answered ---------------------------------------------------
+
+test('5.1 each answer opens with a quiet line naming its backend, the model in its tooltip, and the pending line names the backend', async (t) => {
+  let call = 0;
+  const { url } = await startServer(t, {
+    dispatch: async ({ exchange }) => {
+      if (exchange.question.startsWith('slow')) await sleep(1_500);
+      call += 1;
+      return {
+        ok: true,
+        answer: { text: `Answer ${call} from ${exchange.backend}`, source: 'code', sourceDetail: 'src/x.js:1' },
+        subAgentSessionId: `s-${call}`,
+        model: exchange.backend === 'claude' ? 'claude-fable-5-1' : null,
+      };
+    },
+  });
+  const thread = await seedThread(url, 'first?');
+  await fetch(new URL(`/api/threads/${thread.id}/exchanges`, url), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question: '@codex second?' }),
+  });
+  await waitForAnswer(url, thread.id);
+
+  const { page, consoleErrors } = await openBrowser(t);
+  await page.goto(new URL('/turns/prompt-1', url).href);
+  const labels = page.locator('.exchange .answer-by');
+  await labels.nth(1).waitFor();
+  assert.deepEqual(await labels.allTextContents(), ['Claude answered:', 'CODEX answered:']);
+  assert.equal(await labels.nth(0).getAttribute('data-backend'), 'claude');
+  assert.equal(await labels.nth(0).getAttribute('title'), 'Answered by Claude on claude-fable-5-1');
+  assert.equal(await labels.nth(1).getAttribute('title'), 'Answered by CODEX', 'no model known for the codex answer');
+  const firstAnswer = page.locator('.exchange').first().locator('.answer');
+  const [labelBox, bodyBox, badgeBox] = await Promise.all([labels.nth(0).boundingBox(), firstAnswer.locator('.answer-body').boundingBox(), firstAnswer.locator('.source-badge').boundingBox()]);
+  assert.ok(labelBox && bodyBox && badgeBox && labelBox.y + labelBox.height <= bodyBox.y + 1, 'the label sits above the answer body');
+  assert.ok(labelBox && badgeBox && labelBox.height < badgeBox.height * 1.6, 'and is no louder than the source badge');
+  assert.equal(await labels.nth(0).evaluate((node) => getComputedStyle(node).backgroundColor), 'rgba(0, 0, 0, 0)', 'no fill colour');
+  assert.equal(await page.locator('.follow-up-question').getAttribute('placeholder'), 'Ask a follow-up… (@claude or @codex to switch)');
+
+  await page.locator('.follow-up-question').fill('slow third?');
+  await page.keyboard.press('Enter');
+  const pending = page.locator('.exchange').nth(2).locator('.answer-pending');
+  await pending.waitFor();
+  assert.match((await pending.textContent()) ?? '', /^Asking CODEX…/, 'sticky: the follow-up goes to the backend that answered last, and says so while pending');
+  await page.locator('.exchange').nth(2).locator('.answer-by').waitFor({ timeout: 10_000 });
+  assert.equal(await page.locator('.exchange').nth(2).locator('.answer-by').textContent(), 'CODEX answered:');
   assert.deepEqual(consoleErrors, []);
 });
 

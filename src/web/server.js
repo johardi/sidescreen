@@ -17,10 +17,12 @@ import { renderErrorPage, renderLandingPage, renderSidebar, renderWorkspacePage 
 import { listTurns, removeTurn, turnsForSession } from '../store/turns.js';
 import { findProject, listProjects, projectId, projectPath, sessionPath, turnPath } from '../store/projects.js';
 import { presentSidebar } from './sidebar.js';
-import { createThread, createExchange, latestForkable, listThreadsForTurn, validateAnchor } from '../store/threads.js';
+import { createThread, createExchange, lineageOf, listThreadsForTurn, validateAnchor } from '../store/threads.js';
 import { isIngestHookRegistered } from '../hooks/setup-hooks.js';
 import { addEntry, entriesFor, removeEntry } from '../store/carry-back.js';
 import { STORE_FILE_NAME } from '../store/store.js';
+import { dispatchSettings } from '../dispatch/backends.js';
+import { isAnswered, routeQuestion } from '../dispatch/route.js';
 
 /** @typedef {import('../types.js').Turn} Turn */
 /** @typedef {import('../types.js').State} State */
@@ -34,13 +36,18 @@ import { STORE_FILE_NAME } from '../store/store.js';
  * @typedef {object} DispatchInput
  * @property {Turn} turn
  * @property {Thread} thread
- * @property {Exchange} exchange
- * @property {import('../dispatch/dispatch.js').DispatchTarget} target Which sub-agent session to start from.
+ * @property {Exchange} exchange The exchange to answer; its `backend` names the backend.
+ * @property {string} question The question with any leading backend tag removed.
+ * @property {import('../dispatch/adapter.js').DispatchTarget} target Which sub-agent session to start from.
+ * @property {Exchange[]} priorExchanges For a new session continuing a thread: the earlier answered exchanges, oldest first.
+ * @property {Exchange[]} gap For a fork: the answered exchanges since the forked answer, oldest first.
  */
 
 /**
- * @typedef {{ ok: true, answer: Answer, subAgentSessionId: string|null } | { ok: false, error: string }} DispatchResult
+ * @typedef {{ ok: true, answer: Answer, subAgentSessionId: string|null, model?: string|null } | { ok: false, error: string }} DispatchResult
  */
+
+/** @typedef {import('../dispatch/route.js').Route} Route */
 
 /** @typedef {(input: DispatchInput) => Promise<DispatchResult>} Dispatch */
 
@@ -105,6 +112,8 @@ export class SidescreenServer {
     this.env = env;
     this.cwd = cwd;
     this.log = log;
+    /** The backend an untagged first question runs on. */
+    this.defaultBackend = dispatchSettings(env).defaultBackend;
     this.server = http.createServer((req, res) => {
       this.#handle(req, res).catch((error) => {
         this.log(`request failed: ${/** @type {Error} */ (error).stack ?? error}`);
@@ -465,12 +474,18 @@ export class SidescreenServer {
       return;
     }
 
+    const route = routeQuestion({ question, lineage: [], defaultBackend: this.defaultBackend });
+    if (route.question.trim() === '') {
+      sendJson(res, 400, { error: 'Expected a question after the backend tag' });
+      return;
+    }
+
     /** @type {Thread|null} */
     let thread = null;
-    const latestState = await this.store.update((state) => {
+    await this.store.update((state) => {
       const turn = state.turns[promptId];
       if (!turn) return;
-      thread = createThread({ turn, anchor, selectedText, question });
+      thread = createThread({ turn, anchor, selectedText, question, backend: route.backend });
       state.threads[thread.id] = thread;
     });
     if (thread === null) {
@@ -479,13 +494,15 @@ export class SidescreenServer {
     }
     const created = /** @type {Thread} */ (thread);
     this.broadcast({ type: 'thread-created', threadId: created.id, promptId });
-    this.#track(this.#answerExchange(created.id, created.exchanges[0].id, { mode: 'new', cwd: latestState.turns[promptId].cwd }));
+    this.#track(this.#answerExchange(created.id, created.exchanges[0].id, route));
     sendJson(res, 201, { thread: presentThread(created) });
   }
 
   /**
-   * Ask a follow-up in an existing thread. It forks the session of the
-   * newest answered exchange, so the thread's context carries forward.
+   * Ask a follow-up in an existing thread. Without a tag it stays with the
+   * backend that answered last and forks that answer's session; with a tag it
+   * switches, forking the newest answer of that backend in the thread and
+   * carrying the exchanges since, or starting fresh with the whole thread.
    *
    * @param {http.IncomingMessage} req
    * @param {http.ServerResponse} res
@@ -500,7 +517,7 @@ export class SidescreenServer {
       return;
     }
 
-    /** @type {{ ok: { thread: Thread, exchange: Exchange, target: import('../dispatch/dispatch.js').DispatchTarget }|null, failure: { status: number, error: string }|null }} */
+    /** @type {{ ok: { thread: Thread, exchange: Exchange, route: Route }|null, failure: { status: number, error: string }|null }} */
     const outcome = { ok: null, failure: null };
     await this.store.update((state) => {
       const thread = state.threads[threadId];
@@ -514,30 +531,33 @@ export class SidescreenServer {
         outcome.failure = { status: 409, error: 'Wait for the current answer before asking a follow-up' };
         return;
       }
-      const forkable = latestForkable(thread);
-      const exchange = createExchange(question);
+      const route = routeQuestion({ question, lineage: lineageOf(state.threads, thread), defaultBackend: this.defaultBackend });
+      if (route.question.trim() === '') {
+        outcome.failure = { status: 400, error: 'Expected a question after the backend tag' };
+        return;
+      }
+      const exchange = createExchange(question, route.backend);
       thread.exchanges.push(exchange);
-      outcome.ok = {
-        thread,
-        exchange,
-        target: forkable ? { mode: 'fork', sessionId: /** @type {string} */ (forkable.subAgentSessionId) } : { mode: 'new', cwd: turn.cwd },
-      };
+      outcome.ok = { thread, exchange, route };
     });
     if (outcome.failure !== null || outcome.ok === null) {
       const { status, error } = outcome.failure ?? { status: 500, error: 'Follow-up was not recorded' };
       sendJson(res, status, { error });
       return;
     }
-    const { thread, exchange, target } = outcome.ok;
+    const { thread, exchange, route } = outcome.ok;
     this.broadcast({ type: 'thread-updated', threadId });
-    this.#track(this.#answerExchange(threadId, exchange.id, target));
+    this.#track(this.#answerExchange(threadId, exchange.id, route));
     sendJson(res, 201, { thread: presentThread(thread), exchangeId: exchange.id });
   }
 
   /**
-   * Branch a new thread from one answered exchange. The branch forks that
-   * exchange's session, so it sees the conversation up to that answer only,
-   * however far the parent thread has moved on since.
+   * Branch a new thread from one answered exchange. The branch's lineage is
+   * the parent's up to that answer, so it sees the conversation to that
+   * point only, however far the parent thread has moved on since. Without a
+   * tag it forks that answer's session; with a tag for the other backend it
+   * forks that backend's newest answer before the branch point, or starts
+   * fresh with the lineage as text.
    *
    * @param {http.IncomingMessage} req
    * @param {http.ServerResponse} res
@@ -553,7 +573,7 @@ export class SidescreenServer {
       return;
     }
 
-    /** @type {{ ok: { branch: Thread, sessionId: string }|null, failure: { status: number, error: string }|null }} */
+    /** @type {{ ok: { branch: Thread, route: Route }|null, failure: { status: number, error: string }|null }} */
     const outcome = { ok: null, failure: null };
     await this.store.update((state) => {
       const parent = state.threads[parentThreadId];
@@ -567,8 +587,13 @@ export class SidescreenServer {
         outcome.failure = { status: 404, error: 'Exchange not found in that thread' };
         return;
       }
-      if (exchange.status !== 'answered' || !exchange.subAgentSessionId) {
+      if (!isAnswered(exchange)) {
         outcome.failure = { status: 409, error: 'Only an answered exchange can be branched from' };
+        return;
+      }
+      const route = routeQuestion({ question, lineage: lineageOf(state.threads, parent, exchange.id), defaultBackend: this.defaultBackend });
+      if (route.question.trim() === '') {
+        outcome.failure = { status: 400, error: 'Expected a question after the backend tag' };
         return;
       }
       const branch = createThread({
@@ -576,20 +601,21 @@ export class SidescreenServer {
         anchor: parent.anchor,
         selectedText: parent.selectedText,
         question,
+        backend: route.backend,
         parentThreadId: parent.id,
         branchedFromExchangeId: exchange.id,
       });
       state.threads[branch.id] = branch;
-      outcome.ok = { branch, sessionId: exchange.subAgentSessionId };
+      outcome.ok = { branch, route };
     });
     if (outcome.failure !== null || outcome.ok === null) {
       const { status, error } = outcome.failure ?? { status: 500, error: 'Branch was not recorded' };
       sendJson(res, status, { error });
       return;
     }
-    const { branch, sessionId } = outcome.ok;
+    const { branch, route } = outcome.ok;
     this.broadcast({ type: 'thread-created', threadId: branch.id, promptId: branch.promptId });
-    this.#track(this.#answerExchange(branch.id, branch.exchanges[0].id, { mode: 'fork', sessionId }));
+    this.#track(this.#answerExchange(branch.id, branch.exchanges[0].id, route));
     sendJson(res, 201, { thread: presentThread(branch) });
   }
 
@@ -598,9 +624,9 @@ export class SidescreenServer {
    *
    * @param {string} threadId
    * @param {string} exchangeId
-   * @param {import('../dispatch/dispatch.js').DispatchTarget} target
+   * @param {Route} route Where the question starts from and what travels with it.
    */
-  async #answerExchange(threadId, exchangeId, target) {
+  async #answerExchange(threadId, exchangeId, route) {
     const state = await this.store.read();
     const thread = state.threads[threadId];
     const exchange = thread?.exchanges.find((candidate) => candidate.id === exchangeId);
@@ -610,7 +636,7 @@ export class SidescreenServer {
     /** @type {DispatchResult} */
     let result;
     try {
-      result = await this.dispatch({ turn, thread, exchange, target });
+      result = await this.dispatch({ turn, thread, exchange, question: route.question, target: route.target, priorExchanges: route.priorExchanges, gap: route.gap });
     } catch (error) {
       result = { ok: false, error: /** @type {Error} */ (error).message };
     }
@@ -625,7 +651,7 @@ export class SidescreenServer {
         targetExchange.answer = result.answer;
         targetExchange.error = null;
         targetExchange.subAgentSessionId = result.subAgentSessionId;
-        if (result.subAgentSessionId) owner.subAgentSessionId = result.subAgentSessionId;
+        targetExchange.model = result.model ?? null;
       } else {
         targetExchange.status = 'failed';
         targetExchange.error = result.error;

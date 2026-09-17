@@ -334,6 +334,7 @@ test('5.2 a version 1 store opens in the workspace with its threads and carry-ba
   assert.equal(await page.locator('.thread .question').textContent(), 'Why quick?');
   assert.deepEqual(await page.locator('.carry-back-entry-text').allTextContents(), ['Carried from before.']);
 
+  assert.equal(await page.locator('.thread .answer-by').textContent(), 'CODEX answered:', 'an answer from before backends were recorded was Codex');
   const row = page.locator(`.turn-row[data-prompt-id="${turn.promptId}"]`);
   await row.hover();
   await row.locator('.turn-remove').click();

@@ -46,6 +46,9 @@ const state = {
   pollTimer: null,
 };
 
+/** How each backend is named where the user reads it. */
+const BACKEND_LABELS = /** @type {Record<string, string>} */ ({ claude: 'Claude', codex: 'CODEX' });
+
 const SOURCE_LABELS = /** @type {Record<string, string>} */ ({
   code: 'source: code',
   transcript: 'source: transcript',
@@ -336,10 +339,11 @@ function lineageText(thread) {
 function renderAnswer(exchange) {
   const answer = element('div', { class: 'answer', 'data-status': exchange.status });
   if (exchange.status === 'pending') {
-    answer.append(element('p', { class: 'answer-pending' }, `Asking the sub-agent… ${elapsedSince(exchange.askedAt)}`));
+    answer.append(element('p', { class: 'answer-pending' }, pendingText(exchange)));
   } else if (exchange.status === 'failed') {
     answer.append(element('p', { class: 'answer-error' }, `Could not get an answer: ${exchange.error ?? 'unknown error'}`));
   } else if (exchange.answer) {
+    answer.append(answeredBy(exchange));
     const body = element('div', { class: 'answer-body' });
     body.innerHTML = exchange.answerHtml ?? '';
     answer.append(body);
@@ -353,6 +357,28 @@ function renderAnswer(exchange) {
   return answer;
 }
 
+/** @param {string} backend */
+function backendLabel(backend) {
+  return BACKEND_LABELS[backend] ?? backend;
+}
+
+/**
+ * Who answered, quietly, above the answer: "Claude answered:" or "CODEX
+ * answered:", with the model in the tooltip when known.
+ *
+ * @param {PresentedExchange} exchange
+ */
+function answeredBy(exchange) {
+  const label = backendLabel(exchange.backend);
+  const title = exchange.model ? `Answered by ${label} on ${exchange.model}` : `Answered by ${label}`;
+  return element('p', { class: 'answer-by', 'data-backend': exchange.backend, title }, `${label} answered:`);
+}
+
+/** @param {PresentedExchange} exchange */
+function pendingText(exchange) {
+  return `Asking ${backendLabel(exchange.backend)}… ${elapsedSince(exchange.askedAt)}`;
+}
+
 /** @param {PresentedThread} thread */
 function renderFollowUpForm(thread) {
   const last = thread.exchanges[thread.exchanges.length - 1];
@@ -362,7 +388,7 @@ function renderFollowUpForm(thread) {
     class: 'follow-up-question',
     rows: '2',
     'aria-label': 'Follow-up question',
-    placeholder: waiting ? 'Waiting for the current answer…' : 'Ask a follow-up…',
+    placeholder: waiting ? 'Waiting for the current answer…' : 'Ask a follow-up… (@claude or @codex to switch)',
   });
   const button = element('button', { type: 'submit', class: 'button-primary follow-up-button' }, 'Follow up');
   input.disabled = waiting;
@@ -588,7 +614,7 @@ setInterval(() => {
   for (const pendingNode of threadPane.querySelectorAll('.answer-pending')) {
     const exchangeId = pendingNode.closest('[data-exchange-id]')?.getAttribute('data-exchange-id');
     const exchange = state.threads.flatMap((thread) => thread.exchanges).find((candidate) => candidate.id === exchangeId);
-    if (exchange) pendingNode.textContent = `Asking the sub-agent… ${elapsedSince(exchange.askedAt)}`;
+    if (exchange) pendingNode.textContent = pendingText(exchange);
   }
 }, 1_000);
 

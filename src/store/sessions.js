@@ -62,7 +62,7 @@ export function upsertSession(state, turn, title = null) {
  */
 export function deriveSessions(turns) {
   /** @type {State} */
-  const scratch = { version: 2, turns: {}, sessions: {}, threads: {}, carryBack: {} };
+  const scratch = { version: 3, turns: {}, sessions: {}, threads: {}, carryBack: {} };
   for (const turn of Object.values(turns)) upsertSession(scratch, turn);
   return scratch.sessions;
 }

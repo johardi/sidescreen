@@ -16,11 +16,14 @@ export const TITLE_TAIL_BYTES = 1_048_576;
 const TITLE_RECORD_TYPE = 'ai-title';
 
 /**
+ * The last `tailBytes` of a transcript as text, or null for any reason at all:
+ * no path, a missing or unreadable file, or an empty one.
+ *
  * @param {string|null|undefined} transcriptPath
  * @param {{ tailBytes?: number }} [options]
- * @returns {Promise<string|null>} The latest title in the tail, or null for any reason at all.
+ * @returns {Promise<string|null>}
  */
-export async function readSessionTitle(transcriptPath, { tailBytes = TITLE_TAIL_BYTES } = {}) {
+export async function readTranscriptTail(transcriptPath, { tailBytes = TITLE_TAIL_BYTES } = {}) {
   if (typeof transcriptPath !== 'string' || transcriptPath === '') return null;
   /** @type {import('node:fs/promises').FileHandle|undefined} */
   let handle;
@@ -32,12 +35,22 @@ export async function readSessionTitle(transcriptPath, { tailBytes = TITLE_TAIL_
     if (length === 0) return null;
     const buffer = Buffer.alloc(length);
     await handle.read(buffer, 0, length, start);
-    return lastTitleIn(buffer.toString('utf8'));
+    return buffer.toString('utf8');
   } catch {
     return null;
   } finally {
     await handle?.close().catch(() => {});
   }
+}
+
+/**
+ * @param {string|null|undefined} transcriptPath
+ * @param {{ tailBytes?: number }} [options]
+ * @returns {Promise<string|null>} The latest title in the tail, or null for any reason at all.
+ */
+export async function readSessionTitle(transcriptPath, options = {}) {
+  const tail = await readTranscriptTail(transcriptPath, options);
+  return tail === null ? null : lastTitleIn(tail);
 }
 
 /**

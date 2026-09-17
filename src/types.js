@@ -7,6 +7,7 @@
  * @property {string} cwd Project directory the turn ran in.
  * @property {string|null} transcriptPath Path to the harness transcript, if the hook supplied one.
  * @property {string} message The turn's final assistant message, verbatim.
+ * @property {string|null} model The model that produced the turn, as the transcript names it, or null when the transcript had not named it at ingest.
  * @property {string} receivedAt ISO timestamp of ingestion.
  */
 
@@ -25,7 +26,7 @@
 
 /**
  * @typedef {object} State The whole persisted store.
- * @property {2} version Schema version.
+ * @property {3} version Schema version.
  * @property {Record<string, Turn>} turns Turns keyed by promptId.
  * @property {Record<string, Session>} sessions Sessions keyed by sessionId.
  * @property {Record<string, import('./store/threads.js').Thread>} threads Threads keyed by thread id.
