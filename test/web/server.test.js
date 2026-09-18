@@ -138,11 +138,13 @@ test('the header reads back, title, sidebar toggle, centred name with scope tag,
   const { url } = await startServer(t);
   const page = await (await fetch(new URL('/turns/prompt-1', url))).text();
   const header = /<header class="topbar">([\s\S]*?)<\/header>/.exec(page)?.[1] ?? '';
-  const order = ['class="topbar-back icon-button" href="/"', 'class="brand" href="/">SideScreen<', 'id="sidebar-toggle"', 'class="topbar-center"', 'class="topbar-project">proj<', 'class="topbar-scope"', 'class="topbar-path"'];
+  const order = ['class="topbar-back icon-button" href="/"', 'class="brand" href="/">SideScreen<', 'class="topbar-center"', 'class="topbar-project">proj<', 'class="topbar-scope"', 'class="topbar-path"'];
   const positions = order.map((needle) => header.indexOf(needle));
   assert.ok(positions.every((position) => position >= 0), `every header part is present: ${JSON.stringify(positions)}`);
   assert.deepEqual([...positions].sort((a, b) => a - b), positions, 'and in this order');
   assert.doesNotMatch(header, /<time/, 'the turn\'s time is on its sidebar row, not in the header');
+  assert.doesNotMatch(header, /sidebar-toggle/, 'the toggle lives in the sidebar\'s footer');
+  assert.match(page, /<footer class="sidebar-footer">[\s\S]*id="sidebar-toggle"[\s\S]*id="theme-switch"[\s\S]*class="sidebar-version"[^>]*>v\d+\.\d+\.\d+</, 'with the scheme switch and the version');
   assert.doesNotMatch(header, /All projects</, 'the text link gave way to the back control');
   assert.match(header, /aria-label="All projects"/);
   assert.match(page, /<title>SideScreen: proj: prompt-1<\/title>/);

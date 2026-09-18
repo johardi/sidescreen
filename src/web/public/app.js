@@ -586,6 +586,8 @@ function mergeThread(thread) {
 // ---- Live updates ----------------------------------------------------------
 
 async function refresh() {
+  // The frame marks the page quiet while it is leaving or removing something: the turn may already be gone.
+  if (document.documentElement.hasAttribute('data-quiet')) return;
   try {
     const response = await fetch(`/api/turns/${encodeURIComponent(state.turn.promptId)}`);
     if (!response.ok) return;

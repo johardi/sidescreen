@@ -157,7 +157,13 @@ test('4.2 following one session ignores another session\'s turn except for the n
   await page.goto(new URL(`/projects/${PROJECT}/sessions/sess-a`, url).href);
   assert.match((await page.locator('#document').textContent()) ?? '', /A two/);
   assert.equal(await page.locator('.topbar-scope').textContent(), 'following this session');
-  assert.equal(await page.locator('.session[data-session-id="sess-a"] .session-follow').getAttribute('aria-current'), 'page');
+  const sessionA = page.locator('.session[data-session-id="sess-a"]');
+  assert.equal(await sessionA.getAttribute('data-followed'), '', 'the followed session is marked');
+  await sessionA.hover();
+  await sessionA.locator('.session-menu-button').click();
+  assert.equal(await page.locator('.session-menu [role="menuitemcheckbox"]').getAttribute('aria-checked'), 'true', 'and its menu says it is followed');
+  await page.keyboard.press('Escape');
+  await page.locator('.session-menu').waitFor({ state: 'detached' });
   await mark(page);
 
   await arrive(store, sampleTurn({ promptId: 'b3', sessionId: 'sess-b', receivedAt: '2026-01-01T02:00:00.000Z', message: 'B three, elsewhere.' }));

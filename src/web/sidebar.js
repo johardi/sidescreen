@@ -31,6 +31,7 @@ import { turnsForSession } from '../store/turns.js';
  * @property {string} lastTurnAt
  * @property {string|null} latestPromptId
  * @property {string} href The session's follow address.
+ * @property {boolean} sharedLabel Whether another session of the project has the same label, so the start time is shown to tell them apart.
  * @property {SidebarTurn[]} turns Newest first.
  */
 
@@ -70,8 +71,13 @@ export function presentSidebar(state, project) {
       lastTurnAt: session.lastTurnAt,
       latestPromptId: turns[0]?.promptId ?? null,
       href: sessionPath(project.id, session.sessionId),
+      sharedLabel: false,
       turns,
     };
   });
+  /** @type {Map<string, number>} */
+  const labelCounts = new Map();
+  for (const session of sessions) labelCounts.set(session.label, (labelCounts.get(session.label) ?? 0) + 1);
+  for (const session of sessions) session.sharedLabel = (labelCounts.get(session.label) ?? 0) > 1;
   return { project, latestPromptId: sessions[0]?.latestPromptId ?? null, sessions };
 }

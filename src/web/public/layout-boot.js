@@ -14,6 +14,7 @@
   const SIDEBAR_MIN = 180;
   const SIDEBAR_MAX = 480;
   const THREAD_MIN = 260;
+  const RAIL = 40;
 
   /**
    * @param {unknown} value
@@ -29,7 +30,7 @@
     const root = document.documentElement;
     if (stored.sidebarHidden === true) {
       root.setAttribute('data-sidebar-hidden', '');
-      root.style.setProperty('--sidebar-column', '0px');
+      root.style.setProperty('--sidebar-column', `${RAIL}px`);
       root.style.setProperty('--handle-column', '0px');
     } else if (isWidth(stored.sidebarWidth)) {
       root.style.setProperty('--sidebar-column', `${Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(stored.sidebarWidth)))}px`);

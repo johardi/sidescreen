@@ -22,6 +22,7 @@ const SIDEBAR_MAX = 480;
 const THREAD_MIN = 260;
 const DOCUMENT_MIN = 300;
 const HANDLE = 6;
+const RAIL = 40;
 
 /** @type {import('../../src/web/server.js').Dispatch} */
 const longAnswerStub = async ({ exchange }) => ({
@@ -346,23 +347,24 @@ test('4.3 the toggle hides the sidebar and shows it again, and following continu
   const shown = await widths(page);
 
   await toggle.click();
-  assert.equal(await page.locator('.sidebar').isVisible(), false, 'the sidebar is gone');
-  assert.equal(await page.locator('#sidebar-handle').isVisible(), false, 'and so is its handle');
+  assert.equal((await widths(page)).sidebar, RAIL, 'the sidebar collapses to a rail');
+  assert.equal(await page.locator('.sidebar-scroll').isVisible(), false, 'the sessions are gone');
+  assert.equal(await page.locator('#sidebar-handle').isVisible(), false, 'and so is the handle');
   assert.equal(await toggle.getAttribute('aria-label'), 'Show sidebar');
   assert.equal(await toggle.getAttribute('aria-pressed'), 'true');
   const hidden = await widths(page);
-  near(hidden.document + hidden.thread, shown.document + shown.thread + shown.sidebar + HANDLE, 'the document and thread pane take the freed width');
-  near((await shell(page)).document?.x ?? -1, 0, 'the document now starts at the left edge');
+  near(hidden.document + hidden.thread, shown.document + shown.thread + shown.sidebar + HANDLE - RAIL, 'the document and thread pane take the freed width');
+  near((await shell(page)).document?.x ?? -1, RAIL, 'the document now starts beside the rail');
   const toggleBox = await toggle.boundingBox();
 
   await arrive(store, sampleTurn({ promptId: 'a3', sessionId: 'sess-a', receivedAt: '2026-01-01T02:00:00.000Z', message: 'A three, arriving hidden.' }));
   await page.locator('#document', { hasText: 'A three, arriving hidden.' }).waitFor({ timeout: 5_000 });
-  assert.equal(await page.locator('.sidebar').isVisible(), false, 'the new turn shows and the sidebar stays hidden through the reload');
+  assert.equal((await widths(page)).sidebar, RAIL, 'the new turn shows and the sidebar stays a rail through the reload');
   assert.equal(await page.evaluate(() => document.documentElement.hasAttribute('data-sidebar-hidden')), true);
   assert.deepEqual(await toggle.boundingBox(), toggleBox, 'the toggle has not moved');
 
   await toggle.click();
-  assert.equal(await page.locator('.sidebar').isVisible(), true);
+  assert.equal(await page.locator('.sidebar-scroll').isVisible(), true);
   assert.equal((await widths(page)).sidebar, SIDEBAR_DEFAULT, 'back at the width it had');
   assert.equal(await toggle.getAttribute('aria-label'), 'Hide sidebar');
   const active = page.locator('.turn-row[data-active]');
@@ -407,8 +409,8 @@ test('5.1 the blocking script applies the stored layout before any module runs',
     await seedLayout(page, { sidebarWidth: 320, threadWidth: null, sidebarHidden: true });
     await page.route('**/assets/workspace.js', (route) => route.abort());
     await page.goto(new URL('/turns/prompt-1', url).href);
-    assert.equal(await page.locator('.sidebar').isVisible(), false, 'hidden before any module runs');
-    near((await shell(page)).document?.x ?? -1, 0, 'and the document starts at the edge');
+    assert.equal((await widths(page)).sidebar, RAIL, 'a rail before any module runs');
+    near((await shell(page)).document?.x ?? -1, RAIL, 'and the document starts beside it');
   }
 });
 
@@ -421,7 +423,7 @@ test('5.2 the layout survives a reload, applies to another project in the same b
     await dragHandle(page, '#thread-handle', -100);
     await page.locator('#sidebar-toggle').click();
     const set = await widths(page);
-    assert.equal(set.sidebar, 0);
+    assert.equal(set.sidebar, RAIL);
 
     await page.reload();
     assert.deepEqual(await widths(page), set, 'the same after a reload');
@@ -451,7 +453,7 @@ test('5.2 the layout survives a reload, applies to another project in the same b
     await dragHandle(page, '#thread-handle', -100);
     near((await widths(page)).thread, start.thread + 100, 'resizing still works for the life of the page');
     await page.locator('#sidebar-toggle').click();
-    assert.equal(await page.locator('.sidebar').isVisible(), false, 'so does hiding');
+    assert.equal((await widths(page)).sidebar, RAIL, 'so does hiding');
     assert.deepEqual(consoleErrors, [], 'and nothing is logged about it');
   }
 });
@@ -470,8 +472,8 @@ test('3.1 the empty workspace is the same shell with three columns: the sidebar 
   await dragHandle(page, '#sidebar-handle', 100);
   assert.equal((await widths(page)).sidebar, SIDEBAR_DEFAULT + 100);
   await page.locator('#sidebar-toggle').click();
-  assert.equal(await page.locator('.sidebar').isVisible(), false);
-  near((await shell(page)).document?.x ?? -1, 0, 'the document takes the whole width');
+  assert.equal((await widths(page)).sidebar, RAIL);
+  near((await shell(page)).document?.x ?? -1, RAIL, 'the document takes everything beside the rail');
   assert.deepEqual(consoleErrors, []);
 });
 
@@ -500,7 +502,7 @@ test('2.1 the header centres the project name, truncates a long path, and takes 
   // The browser starts tabbing from the turn the sidebar scrolled into view, so begin from the header: onto the title, then back one.
   await page.locator('.brand').focus();
   await page.keyboard.press('Shift+Tab');
-  for (const expected of ['topbar-back', 'brand', 'sidebar-toggle', 'topbar-scope']) {
+  for (const expected of ['topbar-back', 'brand', 'topbar-scope']) {
     const focused = await page.evaluate(() => {
       const element = /** @type {HTMLElement} */ (document.activeElement);
       const style = getComputedStyle(element);

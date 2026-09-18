@@ -10,7 +10,7 @@
 
 const STORAGE_KEY = 'sidescreen:layout';
 /** Pixel limits. layout-boot.js repeats the ones it needs. */
-const LIMITS = { sidebarMin: 180, sidebarMax: 480, sidebarDefault: 260, threadMin: 260, documentMin: 300, handle: 6 };
+const LIMITS = { sidebarMin: 180, sidebarMax: 480, sidebarDefault: 260, threadMin: 260, documentMin: 300, handle: 6, rail: 40 };
 const KEY_STEP = 16;
 
 /** @typedef {'system'|'light'|'dark'} Theme */
@@ -24,6 +24,7 @@ const layout = /** @type {HTMLElement} */ (document.querySelector('.workspace-la
 const sidebar = /** @type {HTMLElement} */ (document.getElementById('sidebar'));
 const sidebarHandle = /** @type {HTMLElement} */ (document.getElementById('sidebar-handle'));
 const toggle = /** @type {HTMLButtonElement} */ (document.getElementById('sidebar-toggle'));
+const themeSwitch = /** @type {HTMLButtonElement} */ (document.getElementById('theme-switch'));
 /** Absent on the empty workspace, which has no thread pane. */
 const threadHandle = document.getElementById('thread-handle');
 const threadPane = document.getElementById('thread-pane');
@@ -90,7 +91,7 @@ function fitted() {
   const handles = (state.sidebarHidden ? 0 : LIMITS.handle) + (hasThread ? LIMITS.handle : 0);
   const others = LIMITS.documentMin + (hasThread ? LIMITS.threadMin : 0) + handles;
   const sidebarRoom = Math.max(LIMITS.sidebarMin, total - others);
-  const sidebarWidth = state.sidebarHidden ? 0 : clamp(state.sidebarWidth, LIMITS.sidebarMin, Math.min(LIMITS.sidebarMax, sidebarRoom));
+  const sidebarWidth = state.sidebarHidden ? LIMITS.rail : clamp(state.sidebarWidth, LIMITS.sidebarMin, Math.min(LIMITS.sidebarMax, sidebarRoom));
   let thread = state.threadWidth;
   if (hasThread && thread !== null) {
     const threadRoom = Math.max(LIMITS.threadMin, total - sidebarWidth - handles - LIMITS.documentMin);
@@ -113,6 +114,10 @@ function apply() {
   toggle.setAttribute('aria-pressed', String(state.sidebarHidden));
   toggle.setAttribute('aria-label', label);
   toggle.setAttribute('title', label);
+
+  const themeLabel = `Colour scheme: ${state.theme}. Switch to ${nextTheme()}`;
+  themeSwitch.setAttribute('aria-label', themeLabel);
+  themeSwitch.setAttribute('title', themeLabel);
 
   describe(sidebarHandle, shown.sidebar, LIMITS.sidebarMin, LIMITS.sidebarMax);
   if (threadHandle) describe(threadHandle, shown.thread ?? widthOf('thread'), LIMITS.threadMin, layout.clientWidth);
@@ -215,6 +220,13 @@ function wireHandle(handle, pane) {
   });
 }
 
+// ---- The colour scheme ---------------------------------------------------------------
+
+/** The scheme one click on the switch moves to: system, light, dark, and round again. */
+function nextTheme() {
+  return THEMES[(THEMES.indexOf(state.theme) + 1) % THEMES.length];
+}
+
 // ---- Wiring ------------------------------------------------------------------------
 
 wireHandle(sidebarHandle, 'sidebar');
@@ -225,6 +237,12 @@ toggle.addEventListener('click', () => {
   apply();
   writeStored();
   if (!state.sidebarHidden) sidebar.querySelector('.turn-row[data-active]')?.scrollIntoView({ block: 'nearest' });
+});
+
+themeSwitch.addEventListener('click', () => {
+  state.theme = nextTheme();
+  apply();
+  writeStored();
 });
 
 window.addEventListener('resize', apply);
