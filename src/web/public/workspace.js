@@ -5,6 +5,7 @@
  */
 
 import { events } from './events.js';
+import './layout.js';
 
 /** @typedef {import('../sidebar.js').Sidebar} Sidebar */
 /** @typedef {import('../sidebar.js').SidebarTurn} SidebarTurn */
@@ -96,11 +97,6 @@ function decorateSidebar({ scrollIntoView }) {
   if (activeRow) {
     activeRow.setAttribute('data-active', '');
     activeRow.querySelector('.turn-link')?.setAttribute('aria-current', 'page');
-  }
-  const latest = sidebar.querySelector('.sidebar-latest');
-  if (latest) {
-    if (scope.kind === 'project') latest.setAttribute('aria-current', 'page');
-    else latest.removeAttribute('aria-current');
   }
   for (const follow of sidebar.querySelectorAll('.session-follow')) {
     const sessionId = follow.closest('.session')?.getAttribute('data-session-id');

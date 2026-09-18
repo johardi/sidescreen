@@ -122,10 +122,12 @@ Side questions, sub-agent answers, and highlighted text are not included.
 
 The home page lists every project that has sent a response to sidescreen.
 Inside a project, the sidebar groups responses by Claude Code session.
+The header shows the project's name in the centre, its full path at the right, and a back arrow at the left that returns to the list of projects.
 
-- **Latest** follows the newest response from any session in the project.
-- **Follow** follows new responses from one session.
-- Selecting a specific response keeps that response open when newer ones arrive.
+- A project page shows the newest response from any of its sessions and keeps following as new ones arrive.
+- **Follow** on a session follows new responses from that session only.
+- Selecting a specific response pins it, so it stays open when newer ones arrive.
+- The tag beside the project name says what the page follows. When the page is pinned or follows one session, select the tag to return to following the project.
 
 If you are typing a question or editing a conclusion, sidescreen will not replace the response in front of you.
 It will show a notice linking to the new response instead.
@@ -134,6 +136,19 @@ To remove a stored response, hover over it in the sidebar and select the × twic
 Its review threads are removed too.
 The original response remains in Claude Code's transcript.
 A session's newest response cannot be removed; it becomes removable once a newer response arrives.
+
+## Arrange the workspace
+
+The workspace fills the browser window.
+The header stays at the top and **Carry back** stays at the bottom, while the sidebar, the response, and the answers each scroll on their own.
+
+- Drag the edge of the sidebar or of the answers column to change its width.
+- A handle also responds to the arrow keys, and to Home and End, once it has keyboard focus.
+- Double-click a handle to restore the default width.
+- Select the columns icon in the header to hide the sidebar, and again to show it.
+
+The browser remembers the widths and whether the sidebar is hidden, so they survive reloads and apply to every project.
+On a narrow window the panels stack and the page scrolls as one.
 
 ## The menu bar icon (macOS)
 
@@ -307,4 +322,6 @@ Planning documents are in `openspec/`.
 
 ## License
 
-MIT
+MIT.
+
+The icons in the browser interface are from [Font Awesome Free](https://fontawesome.com), used under the [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) license.

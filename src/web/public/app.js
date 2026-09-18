@@ -16,6 +16,8 @@ const dataElement = /** @type {HTMLScriptElement} */ (document.getElementById('t
 const initial = /** @type {{ turn: Turn, threads: PresentedThread[], carryBack: CarryBackEntry[] }} */ (JSON.parse(dataElement.textContent ?? '{}'));
 
 const documentElement = /** @type {HTMLElement} */ (document.getElementById('document'));
+/** The scrolling pane around the document, and the popover's positioning context. */
+const documentPane = /** @type {HTMLElement} */ (document.getElementById('document-pane'));
 const threadPane = /** @type {HTMLElement} */ (document.getElementById('thread-pane'));
 const popover = /** @type {HTMLFormElement} */ (document.getElementById('ask-popover'));
 const selectionQuote = /** @type {HTMLElement} */ (document.getElementById('ask-selection'));
@@ -102,6 +104,9 @@ document.addEventListener('mousedown', (event) => {
 // ---- Ask popover -----------------------------------------------------------
 
 /**
+ * Place the popover just under the selection, in the document pane's own
+ * scroll coordinates, so it travels with the passage when the pane scrolls.
+ *
  * @param {DOMRect} rect Selection rectangle in viewport coordinates.
  * @param {string} text Selected text.
  */
@@ -109,12 +114,13 @@ function showPopover(rect, text) {
   selectionQuote.textContent = text.length > 240 ? `${text.slice(0, 237)}…` : text;
   popover.hidden = false;
   popover.removeAttribute('data-error');
+  const pane = documentPane.getBoundingClientRect();
   const margin = 16;
   const width = popover.offsetWidth;
-  const maxLeft = Math.max(margin, document.documentElement.clientWidth - width - margin);
-  const left = Math.min(Math.max(margin, rect.left + window.scrollX), maxLeft + window.scrollX);
+  const maxLeft = Math.max(margin, documentPane.clientWidth - width - margin);
+  const left = Math.min(Math.max(margin, rect.left - pane.left), maxLeft) + documentPane.scrollLeft;
   popover.style.left = `${left}px`;
-  popover.style.top = `${rect.bottom + window.scrollY + 8}px`;
+  popover.style.top = `${rect.bottom - pane.top + documentPane.scrollTop + 8}px`;
   questionInput.focus({ preventScroll: true });
 }
 

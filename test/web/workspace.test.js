@@ -80,14 +80,15 @@ test('5.1 the sidebar keeps two concurrent sessions apart, shows only this proje
   assert.equal(await active.count(), 1);
   assert.equal(await active.getAttribute('data-prompt-id'), 'b2');
   assert.equal(await active.locator('.turn-link').getAttribute('aria-current'), 'page');
-  assert.equal(await page.locator('.sidebar-latest').getAttribute('aria-current'), 'page');
+  assert.equal(await page.locator('.topbar-scope').evaluate((node) => node.tagName), 'SPAN', 'following the project: the scope tag is a label, not a control');
+  assert.equal(await page.locator('.sidebar-latest').count(), 0, 'the sidebar holds sessions and turns only');
 
   await page.locator('.turn-row[data-prompt-id="a1"] .turn-link').click();
   await page.waitForURL(new URL(turnHref(twoSessions()[0]), url).href);
   assert.equal(await page.locator('.topbar-scope').textContent(), 'pinned turn');
   assert.match((await page.locator('#document').textContent()) ?? '', /A one/);
   assert.equal(await page.locator('.turn-row[data-active]').getAttribute('data-prompt-id'), 'a1');
-  assert.equal(await page.locator('.sidebar-latest').getAttribute('aria-current'), null);
+  assert.equal(await page.locator('.topbar-scope').getAttribute('href'), `/projects/${PROJECT}`, 'pinned: the scope tag is the way back to following');
   assert.deepEqual(consoleErrors, []);
 });
 
@@ -169,9 +170,11 @@ test('4.2 following one session ignores another session\'s turn except for the n
   assert.equal(await marked(page), false, 'a turn in the followed session replaces the page');
   assert.equal(page.url(), new URL(`/projects/${PROJECT}/sessions/sess-a`, url).href);
 
-  await page.locator('.sidebar-latest').click();
+  assert.equal(await page.locator('.topbar-scope').getAttribute('href'), `/projects/${PROJECT}`, 'following one session: the scope tag offers the project');
+  await page.locator('.topbar-scope').click();
   await page.waitForURL(new URL(`/projects/${PROJECT}`, url).href);
-  assert.match((await page.locator('#document').textContent()) ?? '', /A three, followed/, 'Latest returns to following the project, whose newest turn this is');
+  assert.match((await page.locator('#document').textContent()) ?? '', /A three, followed/, 'the scope tag returns to following the project, whose newest turn this is');
+  assert.equal(await page.locator('.topbar-scope').evaluate((node) => node.tagName), 'SPAN', 'and is a label again');
   assert.deepEqual(consoleErrors, []);
 });
 

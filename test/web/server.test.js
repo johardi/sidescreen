@@ -123,12 +123,29 @@ test('the project and session addresses show the newest turn in their scope and 
 
   const projectPage = await (await fetch(new URL(`/projects/${project}`, url))).text();
   assert.match(projectPage, /<p>Newer in A<\/p>/, 'the project address shows the newest turn of any session');
-  assert.match(projectPage, /data-scope="project"/);
-  assert.match(projectPage, /class="sidebar-latest" href="\/projects\/[0-9a-f]{12}" aria-current="page"/);
+  assert.match(projectPage, /<span class="topbar-scope" data-scope="project">/, 'following the project: the scope tag is a label');
+  assert.doesNotMatch(projectPage, /sidebar-latest/, 'the sidebar holds sessions and turns only');
 
   const sessionPage = await (await fetch(new URL(`/projects/${project}/sessions/sess-b`, url))).text();
   assert.match(sessionPage, /<p>Only in B<\/p>/, 'the session address shows that session\'s newest turn');
-  assert.match(sessionPage, /data-scope="session"/);
+  assert.match(sessionPage, new RegExp(`<a class="topbar-scope" data-scope="session" href="/projects/${project}"`), 'following a session: the scope tag returns to the project');
+
+  const pinnedPage = await (await fetch(new URL(`/projects/${project}/sessions/sess-a/turns/a-old`, url))).text();
+  assert.match(pinnedPage, new RegExp(`<a class="topbar-scope" data-scope="turn" href="/projects/${project}"`), 'pinned: the scope tag returns to the project');
+});
+
+test('the header reads back, title, sidebar toggle, centred name with scope tag, then path, with no time', async (t) => {
+  const { url } = await startServer(t);
+  const page = await (await fetch(new URL('/turns/prompt-1', url))).text();
+  const header = /<header class="topbar">([\s\S]*?)<\/header>/.exec(page)?.[1] ?? '';
+  const order = ['class="topbar-back icon-button" href="/"', 'class="brand" href="/">SideScreen<', 'id="sidebar-toggle"', 'class="topbar-center"', 'class="topbar-project">proj<', 'class="topbar-scope"', 'class="topbar-path"'];
+  const positions = order.map((needle) => header.indexOf(needle));
+  assert.ok(positions.every((position) => position >= 0), `every header part is present: ${JSON.stringify(positions)}`);
+  assert.deepEqual([...positions].sort((a, b) => a - b), positions, 'and in this order');
+  assert.doesNotMatch(header, /<time/, 'the turn\'s time is on its sidebar row, not in the header');
+  assert.doesNotMatch(header, /All projects</, 'the text link gave way to the back control');
+  assert.match(header, /aria-label="All projects"/);
+  assert.match(page, /<title>SideScreen: proj: prompt-1<\/title>/);
 });
 
 test('the landing page lists projects newest first with name, path, and session count, and is empty without turns', async (t) => {
@@ -271,6 +288,22 @@ test('assets are served from the public directory only', async (t) => {
   assert.match(css.headers.get('content-type') ?? '', /text\/css/);
   assert.equal((await fetch(new URL('/assets/..%2F..%2Fpackage.json', url))).status, 404);
   assert.equal((await fetch(new URL('/assets/nope.js', url))).status, 404);
+});
+
+test('the favicon is served as SVG, and the icons carry the Font Awesome license comment', async (t) => {
+  const { url } = await startServer(t);
+  const favicon = await fetch(new URL('/assets/favicon.svg', url));
+  assert.equal(favicon.status, 200);
+  assert.equal(favicon.headers.get('content-type'), 'image/svg+xml');
+  assert.match(await favicon.text(), /Font Awesome Free .* License - https:\/\/fontawesome\.com\/license\/free/);
+  for (const path of ['/', '/turns/prompt-1', '/nope']) {
+    const page = await (await fetch(new URL(path, url))).text();
+    assert.match(page, /<link rel="icon" type="image\/svg\+xml" href="\/assets\/favicon\.svg">/, `${path} links the favicon`);
+  }
+  const workspace = await (await fetch(new URL('/turns/prompt-1', url))).text();
+  assert.match(workspace, /<svg class="icon-sprite"[^>]*><!--! Font Awesome Free .* License - https:\/\/fontawesome\.com\/license\/free/);
+  assert.match(workspace, /<symbol id="icon-arrow-left"/);
+  assert.match(workspace, /<symbol id="icon-table-columns"/);
 });
 
 test('creating a thread stores anchor, selection, and question, then records the dispatched answer', async (t) => {
