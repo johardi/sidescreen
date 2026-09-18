@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { NEWEST_TURN_ERROR, isAllowedHost } from '../../src/web/server.js';
 import { preview } from '../../src/web/page.js';
 import { createDispatch } from '../../src/dispatch/dispatch.js';
@@ -12,6 +12,7 @@ import { Store } from '../../src/store/store.js';
 import { FIXTURES, tempDir } from '../helpers.js';
 import { rawRequest, sampleTurn, startServer, turnHref, waitForAnswer } from '../server-helpers.js';
 import { projectId } from '../../src/store/projects.js';
+import { VERSION } from '../../src/version.js';
 
 test('isAllowedHost accepts loopback hostnames on the bound port only', () => {
   assert.ok(isAllowedHost('127.0.0.1:7486', 7486));
@@ -820,4 +821,16 @@ test('6.2 a turn ingested from a subdirectory lives under its session\'s project
   assert.match(projectPage, /<p>Moved turn\.<\/p>/, 'the project page shows it as the newest turn');
   assert.equal((await fetch(new URL(`/projects/${projectId(moved.cwd)}`, url))).status, 404, 'the subdirectory is not a project');
   assert.doesNotMatch(projectPage, /Project not found/);
+});
+
+test('1.1 GET /api/health names sidescreen, the version, the pid, and the state directory, uncached, behind the Host check', async (t) => {
+  const { port, stateDir } = await startServer(t);
+  const ok = await rawRequest({ port, path: '/api/health' });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(JSON.parse(ok.body), { name: 'sidescreen', version: VERSION, pid: process.pid, stateDir: resolve(stateDir) });
+  assert.equal(ok.headers['cache-control'], 'no-store');
+  assert.match(ok.headers['content-type'] ?? '', /application\/json/);
+
+  const refused = await rawRequest({ port, path: '/api/health', host: `evil.example:${port}` });
+  assert.equal(refused.status, 403);
 });

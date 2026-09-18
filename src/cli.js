@@ -1,15 +1,19 @@
-import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { VERSION } from './version.js';
 import { ingest } from './hooks/ingest.js';
 import { carryBackCommand } from './store/carry-back.js';
 import { init } from './hooks/init.js';
 import { defaultSettingsPath, projectSettingsPath, setupHooks } from './hooks/setup-hooks.js';
-import { Store, defaultStateDir } from './store/store.js';
+import { Store, StoreError, defaultStateDir } from './store/store.js';
 import { DEFAULT_PORT, createServer } from './web/server.js';
-import { projectId, projectPath } from './store/projects.js';
 import { createDispatch } from './dispatch/dispatch.js';
 import { dispatchSettings } from './dispatch/backends.js';
+import { probe } from './lifecycle/probe.js';
+import { projectUrl } from './lifecycle/report.js';
+import { openInBrowser } from './lifecycle/browser.js';
+import { LOG_FILE_NAME, report, startCommand } from './lifecycle/start.js';
+import { stopCommand } from './lifecycle/stop.js';
+import { statusCommand } from './lifecycle/status.js';
 
 /**
  * @typedef {object} CliIo
@@ -34,14 +38,25 @@ Usage:
       --settings <path>                     Settings file to edit (default: ~/.claude/settings.json)
       --project                             Edit ./.claude/settings.json instead
       --dry-run                             Report what would change without writing
-  sidescreen serve [options]              Start the browser surface on loopback
+  sidescreen start [options]              Start the browser surface in the background and return.
+                                          The server outlives this shell and the Claude Code
+                                          session that ran it. Reports a server already running
+                                          on the port and exits 0 without starting another.
+      --port <n>                            Port to listen on (default: 7486)
+      --open                                Open this directory's project in the default browser
+  sidescreen stop [options]               Stop the background server and wait for the port to free
+      --port <n>                            Port the server listens on (default: 7486)
+  sidescreen status [options]             One line: is a server running on the port, which version, which pid
+      --port <n>                            Port the server listens on (default: 7486)
+  sidescreen serve [options]              Start the browser surface in the foreground, until Ctrl-C
       --port <n>                            Port to listen on (default: 7486)
       --open                                Open this directory's project in the default browser
   sidescreen --version                    Print the version
   sidescreen --help                       Print this help
 
 Environment:
-  SIDESCREEN_STATE_DIR                    Where the store lives (default: $XDG_STATE_HOME/sidescreen)
+  SIDESCREEN_STATE_DIR                    Where the store lives (default: $XDG_STATE_HOME/sidescreen).
+                                          A background server writes its output to ${LOG_FILE_NAME} there.
   SIDESCREEN_SUBAGENT                     Who answers an untagged first question: parent, claude, or codex
                                           (default: parent, the harness that produced the turn, on the
                                           turn's own model). A question starting with @claude or @codex
@@ -93,6 +108,15 @@ export async function main(argv, io) {
 
     case 'serve':
       return serve(rest, io);
+
+    case 'start':
+      return start(rest, io);
+
+    case 'stop':
+      return stop(rest, io);
+
+    case 'status':
+      return status(rest, io);
 
     default:
       io.stderr.write(`sidescreen: unknown command "${command}"\n\n${USAGE}`);
@@ -152,14 +176,20 @@ async function setup(argv, io) {
 async function serve(argv, io) {
   const options = parseFlags(argv, { port: 'string', open: 'boolean' }, io);
   if (options === null) return 1;
-  const port = typeof options.port === 'string' ? Number(options.port) : DEFAULT_PORT;
-  if (!Number.isInteger(port) || port < 0 || port > 65535) {
-    io.stderr.write(`sidescreen serve: invalid port "${String(options.port)}"\n`);
-    return 1;
-  }
+  const port = parsePort(options.port, 'serve', io);
+  if (port === null) return 1;
 
   const cwd = process.cwd();
   const store = new Store(defaultStateDir(io.env));
+  // Read once before listening, so a store that cannot be read fails the
+  // start with its reason rather than failing every request afterwards.
+  try {
+    await store.read();
+  } catch (error) {
+    if (!(error instanceof StoreError)) throw error;
+    io.stderr.write(`sidescreen serve: ${error.message}\n`);
+    return 1;
+  }
   const server = createServer({
     store,
     dispatch: createDispatch({ env: io.env, stateDir: store.stateDir }),
@@ -173,10 +203,13 @@ async function serve(argv, io) {
     url = await server.listen({ port });
   } catch (error) {
     if (/** @type {NodeJS.ErrnoException} */ (error).code !== 'EADDRINUSE') throw error;
-    io.stderr.write(
-      `sidescreen serve: 127.0.0.1:${port} is already in use. Another sidescreen may be running there: open http://127.0.0.1:${port}/ instead, or choose another port with --port.\n`,
-    );
-    return 1;
+    // Taken. A sidescreen server on this store is success; anything else is not.
+    const result = await probe(port);
+    if (result.kind === 'none') {
+      io.stderr.write(`sidescreen serve: 127.0.0.1:${port} was in use a moment ago and is free now; try again.\n`);
+      return 1;
+    }
+    return report({ command: 'serve', result, found: true, port, cwd, stateDir: store.stateDir, openPage: options.open === true, stdout: io.stdout, stderr: io.stderr });
   }
   const settings = dispatchSettings(io.env);
   const project = projectUrl(url, cwd);
@@ -210,19 +243,68 @@ export function describeSubagents(settings) {
 }
 
 /**
- * The workspace address of a directory's project on a running server.
- *
- * @param {string} baseUrl
- * @param {string} cwd
+ * @param {string[]} argv
+ * @param {CliIo} io
+ * @returns {Promise<number>}
  */
-export function projectUrl(baseUrl, cwd) {
-  return new URL(projectPath(projectId(cwd)), baseUrl).href;
+async function start(argv, io) {
+  const options = parseFlags(argv, { port: 'string', open: 'boolean' }, io);
+  if (options === null) return 1;
+  const port = parsePort(options.port, 'start', io);
+  if (port === null) return 1;
+  return startCommand({
+    port,
+    open: options.open === true,
+    cwd: process.cwd(),
+    env: io.env,
+    stateDir: defaultStateDir(io.env),
+    binPath: BIN_PATH,
+    stdout: io.stdout,
+    stderr: io.stderr,
+  });
 }
 
-/** @param {string} url */
-function openInBrowser(url) {
-  const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
-  spawn(opener, [url], { stdio: 'ignore', detached: true, shell: process.platform === 'win32' }).unref();
+/**
+ * @param {string[]} argv
+ * @param {CliIo} io
+ * @returns {Promise<number>}
+ */
+async function stop(argv, io) {
+  const options = parseFlags(argv, { port: 'string' }, io);
+  if (options === null) return 1;
+  const port = parsePort(options.port, 'stop', io);
+  if (port === null) return 1;
+  return stopCommand({ port, stateDir: defaultStateDir(io.env), stdout: io.stdout, stderr: io.stderr });
+}
+
+/**
+ * @param {string[]} argv
+ * @param {CliIo} io
+ * @returns {Promise<number>}
+ */
+async function status(argv, io) {
+  const options = parseFlags(argv, { port: 'string' }, io);
+  if (options === null) return 1;
+  const port = parsePort(options.port, 'status', io);
+  if (port === null) return 1;
+  return statusCommand({ port, stateDir: defaultStateDir(io.env), stdout: io.stdout, stderr: io.stderr });
+}
+
+/**
+ * The port from a `--port` value, or the default; null after reporting a bad one.
+ *
+ * @param {string|boolean|undefined} value
+ * @param {string} command
+ * @param {CliIo} io
+ * @returns {number|null}
+ */
+function parsePort(value, command, io) {
+  const port = typeof value === 'string' ? Number(value) : DEFAULT_PORT;
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    io.stderr.write(`sidescreen ${command}: invalid port "${String(value)}"\n`);
+    return null;
+  }
+  return port;
 }
 
 /**

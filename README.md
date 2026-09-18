@@ -42,11 +42,15 @@ Claude Code loads hooks when a session starts, so an existing session will not n
 Start sidescreen:
 
 ```sh
-sidescreen serve
+sidescreen start --open
 ```
 
-Keep that terminal open, then open the project URL printed by the command.
+The server starts in the background, and the command returns once it answers.
+It keeps running after you close the terminal or end the Claude Code session, until you run `sidescreen stop`.
 The default server address is `http://127.0.0.1:7486/`.
+
+Run `sidescreen start --open` from any project to open that project's page.
+When the server is already running, the command says so and opens the page without starting another.
 
 Finish a response in Claude Code.
 It will appear in sidescreen automatically.
@@ -158,8 +162,12 @@ This updates the hook to the new installation path.
 | --- | --- |
 | `sidescreen init` | Set up hooks and the guidance file in the current project. |
 | `sidescreen init --dry-run` | Show what setup would change without editing files. |
-| `sidescreen serve` | Start the local browser app on port 7486. |
-| `sidescreen serve --port <number>` | Start the browser app on a different port. |
+| `sidescreen start` | Start the local browser app in the background on port 7486 and return. |
+| `sidescreen start --open` | Start the server, or find the one running, and open this project's page. |
+| `sidescreen stop` | Stop the background server and wait for the port to free. |
+| `sidescreen status` | Report whether a server is running, at which version and process id. |
+| `sidescreen serve` | Start the browser app in the foreground, until Ctrl-C. |
+| `... --port <number>` | Any of the four above, on a different port. |
 | `sidescreen setup hooks` | Register hooks in your user-level Claude Code settings. |
 | `sidescreen setup hooks --project` | Register hooks in the current project's settings only. |
 | `sidescreen setup hooks --dry-run` | Check hook setup without editing files. |
@@ -168,6 +176,9 @@ The hooks use `sidescreen ingest` and `sidescreen carry-back --emit` automatical
 You do not need to run those commands yourself.
 
 ## Configuration
+
+Settings are read when the server starts.
+A background server keeps the environment it was started with, so after changing a setting run `sidescreen stop` and then `sidescreen start`.
 
 Configuration is optional and uses environment variables.
 
@@ -221,12 +232,28 @@ For long-running questions, increase `SIDESCREEN_DISPATCH_TIMEOUT_MS` from its f
 
 ### Port 7486 is already in use
 
-Another sidescreen server may already be running.
-Open `http://127.0.0.1:7486/`, or start this server on another port:
+Run `sidescreen status`.
 
-```sh
-sidescreen serve --port 7487
-```
+- "sidescreen ... is running at": the server is up. `sidescreen start --open` opens your project on it.
+- "in use by something other than sidescreen": another program holds the port. Start on another port and open the address it prints:
+
+  ```sh
+  sidescreen start --port 7487
+  ```
+
+- "reads <directory>, not <directory>": a server started with a different `SIDESCREEN_STATE_DIR` holds the port. Stop it with the same variable set, or use another port.
+
+### The server does not start
+
+`sidescreen start` names the log file when the server exits before answering, and prints its last lines.
+The log is `server.log` in the state directory, `~/.local/state/sidescreen/server.log` by default.
+
+### After upgrading or before uninstalling
+
+A background server keeps running until it is stopped, even after the package is upgraded or removed.
+After upgrading, `sidescreen start` and `sidescreen status` say when the running server is from the older version; run `sidescreen stop` and then `sidescreen start` to switch.
+Run `sidescreen init` again in each project to refresh the skill it installed.
+Before uninstalling, run `sidescreen stop`.
 
 ## Development
 

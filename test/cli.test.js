@@ -3,13 +3,16 @@ import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile, realpath } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
-import { describeSubagents, projectUrl } from '../src/cli.js';
+import { describeSubagents } from '../src/cli.js';
+import { projectUrl } from '../src/lifecycle/report.js';
 import { dispatchSettings } from '../src/dispatch/backends.js';
 import { projectId } from '../src/store/projects.js';
 import { startServer } from './server-helpers.js';
 import { runCli, tempDir } from './helpers.js';
+import { foreignServerAfter } from './lifecycle/lifecycle-helpers.js';
 
 const execFileAsync = promisify(execFile);
 const bin = fileURLToPath(new URL('../bin/sidescreen.js', import.meta.url));
@@ -83,12 +86,46 @@ test('serve --open targets the current directory\'s project, and serve reports t
   assert.match(await page.text(), /No turns yet from/);
 });
 
-test('a second serve on a port already in use says so in one line and exits 1', async (t) => {
-  const { port } = await startServer(t);
-  const result = await runCli(['serve', '--port', String(port)]);
+test('2.1 serve on a port held by a sidescreen server on the same store reports it as running and exits 0', async (t) => {
+  const stateDir = await tempDir(t, 'sidescreen-serve-');
+  const { port } = await startServer(t, { stateDir });
+  const project = await realpath(await tempDir(t, 'sidescreen-cwd-'));
+  const result = await runCli(['serve', '--port', String(port)], { cwd: project, env: { SIDESCREEN_STATE_DIR: stateDir } });
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(result.stdout, new RegExp(`^sidescreen is already running at http://127\\.0\\.0\\.1:${port}/ \\(pid ${process.pid}\\)$`, 'm'));
+  assert.ok(result.stdout.includes(`this project: ${projectUrl(`http://127.0.0.1:${port}/`, project)} (${project})`), result.stdout);
+  assert.equal(result.stderr, '');
+});
+
+test('2.1 serve on a port held by a sidescreen server on another store names both directories and exits 1', async (t) => {
+  const theirs = await tempDir(t, 'sidescreen-theirs-');
+  const mine = await tempDir(t, 'sidescreen-mine-');
+  const { port } = await startServer(t, { stateDir: theirs });
+  const result = await runCli(['serve', '--port', String(port)], { env: { SIDESCREEN_STATE_DIR: mine } });
   assert.equal(result.code, 1);
-  assert.match(result.stderr, new RegExp(`^sidescreen serve: 127\\.0\\.0\\.1:${port} is already in use\\.`));
+  assert.match(result.stderr, new RegExp(`^sidescreen serve: the sidescreen server at 127\\.0\\.0\\.1:${port} reads `));
+  assert.ok(result.stderr.includes(resolve(theirs)), result.stderr);
+  assert.ok(result.stderr.includes(mine), result.stderr);
   assert.match(result.stderr, /--port/);
   assert.doesNotMatch(result.stderr, /at .*\.js:\d+/, 'no stack trace');
   assert.equal(result.stderr.trim().split('\n').length, 1);
+});
+
+test('2.1 serve on a port held by another program says so in one line and exits 1', async (t) => {
+  const stateDir = await tempDir(t, 'sidescreen-serve-');
+  const { port } = await foreignServerAfter(t);
+  const result = await runCli(['serve', '--port', String(port)], { env: { SIDESCREEN_STATE_DIR: stateDir } });
+  assert.equal(result.code, 1);
+  assert.equal(result.stderr, `sidescreen serve: 127.0.0.1:${port} is in use by something other than sidescreen. Choose another port with --port.\n`);
+  assert.equal(result.stdout, '');
+});
+
+test('5.2 the help lists start, stop, and status, and labels serve as the foreground command', async () => {
+  const { stdout } = await execFileAsync(process.execPath, [bin, '--help']);
+  for (const command of ['start', 'stop', 'status', 'serve']) {
+    assert.match(stdout, new RegExp(`^ {2}sidescreen ${command} \\[options\\]`, 'm'), `help lists ${command}`);
+  }
+  assert.match(stdout, /^ {2}sidescreen serve \[options\] .*foreground/m);
+  assert.match(stdout, /^ {2}sidescreen start \[options\] .*background/m);
+  assert.match(stdout, /server\.log/);
 });

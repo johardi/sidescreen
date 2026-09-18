@@ -33,6 +33,7 @@ When nothing was carried back, nothing is injected.
 ## What not to do
 
 - Do not run `sidescreen ingest` or `sidescreen carry-back --emit` yourself. The hooks run them.
+- Do not run `sidescreen serve` from a session. It runs in the foreground and ends with the session. `sidescreen start` is the command for a session.
 - Do not read or edit sidescreen's store under `$XDG_STATE_HOME/sidescreen`, or under `SIDESCREEN_STATE_DIR` when it is set. It holds the user's private review threads.
 - Do not try to answer or guess at the user's side questions. They go to the sub-agent by design.
 
@@ -40,6 +41,8 @@ When nothing was carried back, nothing is injected.
 
 | Ask | Command |
 | --- | --- |
-| Open the review surface | `sidescreen serve --open`, run in the background. It serves http://127.0.0.1:7486/ until stopped and opens this project's page. If it reports the port is already in use, a server is already running: open http://127.0.0.1:7486/ instead. |
+| Open the review surface | `sidescreen start --open`, run once. It starts the server in the background, returns at once, and prints the server address and this project's page. If it reports that a server is already running, that is success: give the user the printed address and do not run the command again in this session. |
+| Stop the server | `sidescreen stop`. The server keeps running across sessions until then. |
+| Check the server | `sidescreen status` prints one line with the address, version, and process id, or says no server is running. |
 | Turns are not appearing | `sidescreen init` re-registers the hook in `./.claude/settings.json`. Claude Code reads hooks at startup, so restart it afterwards. |
 | Check whether the hook is registered | `sidescreen setup hooks --project --dry-run` prints `Stop: unchanged` when it is. |

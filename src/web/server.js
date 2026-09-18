@@ -9,9 +9,10 @@
 import http from 'node:http';
 import { watch } from 'node:fs';
 import { mkdir, readFile } from 'node:fs/promises';
-import { basename, extname, join } from 'node:path';
+import { basename, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { VERSION } from '../version.js';
 import { renderMarkdown } from './render-markdown.js';
 import { renderErrorPage, renderLandingPage, renderSidebar, renderWorkspacePage } from './page.js';
 import { isNewestInSession, listTurns, removeTurn, turnsForSession } from '../store/turns.js';
@@ -143,6 +144,9 @@ export class SidescreenServer {
    * @returns {Promise<string>} The base URL.
    */
   async listen({ port = DEFAULT_PORT, host = '127.0.0.1' } = {}) {
+    // Before binding, so a state directory that cannot be made fails the
+    // start outright instead of after the address has begun to answer.
+    await mkdir(this.store.stateDir, { recursive: true });
     await new Promise((resolve, reject) => {
       this.server.once('error', reject);
       this.server.listen(port, host, () => {
@@ -180,7 +184,6 @@ export class SidescreenServer {
   }
 
   async #watchStore() {
-    await mkdir(this.store.stateDir, { recursive: true });
     try {
       this.#watcher = watch(this.store.stateDir, (_eventType, filename) => {
         if (filename !== null && filename !== STORE_FILE_NAME) return;
@@ -247,6 +250,7 @@ export class SidescreenServer {
       return this.#apiRemoveCarryBack(req, res, decodeURIComponent(match[1]), decodeURIComponent(match[2]));
     }
     if (method === 'GET' && path === '/api/events') return this.#events(req, res);
+    if (method === 'GET' && path === '/api/health') return this.#apiHealth(res);
 
     if (path.startsWith('/api/')) sendJson(res, 404, { error: 'Not found' });
     else sendHtml(res, 404, renderErrorPage('Not found', `No page at ${path}.`));
@@ -429,6 +433,17 @@ export class SidescreenServer {
       if (/** @type {NodeJS.ErrnoException} */ (error).code === 'ENOENT') sendText(res, 404, 'Not found');
       else throw error;
     }
+  }
+
+  /**
+   * Who is on this address: enough for a command or another program to tell a
+   * sidescreen server from any other occupant of the port, and to stop it.
+   *
+   * @param {http.ServerResponse} res
+   */
+  #apiHealth(res) {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify({ name: 'sidescreen', version: VERSION, pid: process.pid, stateDir: resolve(this.store.stateDir) }));
   }
 
   /** @param {http.ServerResponse} res */

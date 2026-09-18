@@ -120,3 +120,18 @@ test('the shipped skill quotes the carry-back header exactly as the CLI emits it
   const skill = await readFile(join(SKILLS_DIR, 'sidescreen', 'SKILL.md'), 'utf8');
   assert.ok(skill.includes(`"${EMISSION_HEADER}"`), 'SKILL.md must quote EMISSION_HEADER verbatim, in double quotes');
 });
+
+test('5.1 the shipped skill starts the server detached, calls an already-running report success, names stop, and matches the installed copy', async () => {
+  const skill = await readFile(join(SKILLS_DIR, 'sidescreen', 'SKILL.md'), 'utf8');
+  assert.match(skill, /`sidescreen start --open`/);
+  assert.match(skill, /`sidescreen stop`/);
+  assert.match(skill, /already running, that is success/);
+  assert.match(skill, /do not run the command again in this session/);
+  assert.doesNotMatch(skill, /serve --open/, 'the foreground command is no longer what a session runs');
+  // The repository's own installed copy is ignored by git, so it exists only
+  // where `sidescreen init` has run; when it does, it must be the shipped text.
+  const installedPath = new URL('../../.claude/skills/sidescreen/SKILL.md', import.meta.url);
+  if (await exists(installedPath.pathname)) {
+    assert.equal(await readFile(installedPath, 'utf8'), skill, "the repository's own installed copy is the shipped skill");
+  }
+});
