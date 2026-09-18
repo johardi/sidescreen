@@ -4,8 +4,8 @@
  * local storage that layout-boot.js applies before first paint.
  *
  * Widths are written to two custom properties on the root element, which the
- * grid in app.css reads. The thread pane keeps a fractional track, an equal
- * split with the document, until the user sizes it; from then on it is pixels.
+ * grid in app.css reads. The thread pane keeps a fractional track, five parts
+ * to the document's six, until the user sizes it; from then on it is pixels.
  */
 
 const STORAGE_KEY = 'sidescreen:layout';

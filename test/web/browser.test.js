@@ -143,7 +143,7 @@ test('the layout holds at 400px with no horizontal page scroll', async (t) => {
   assert.deepEqual(consoleErrors, []);
 });
 
-test('on a wide screen the thread column sits beside the document, the same width until the user sizes it', async (t) => {
+test('on a wide screen the thread column sits beside the document, five parts to its six until the user sizes it', async (t) => {
   const { url } = await startServer(t);
   const { page } = await openBrowser(t, { width: 1200, height: 800 });
   await page.goto(new URL('/turns/prompt-1', url).href);
@@ -153,7 +153,7 @@ test('on a wide screen the thread column sits beside the document, the same widt
   ]);
   assert.ok(documentBox && threadBox);
   assert.ok(threadBox.x >= documentBox.x + documentBox.width - 1);
-  assert.ok(Math.abs(threadBox.width - documentBox.width) <= 1, `document ${documentBox.width} and thread pane ${threadBox.width} start equal`);
+  assert.ok(Math.abs(documentBox.width - threadBox.width * 1.2) <= 2, `document ${documentBox.width} is a fifth wider than the thread pane ${threadBox.width}`);
 });
 
 test('every source value renders as a badge beside the answer, and "none" is an answer, not an error', async (t) => {
