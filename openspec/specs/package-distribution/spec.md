@@ -21,8 +21,8 @@ The documentation SHALL present a global install followed by `sidescreen init` a
 #### Scenario: Following the documented quick start
 
 - **WHEN** a user follows the README quick start
-- **THEN** the steps are a global install, `sidescreen init` in the project, and `sidescreen serve --open`
-- **AND** no step requires cloning the repository or linking a checkout
+- **THEN** the steps are a global install, `sidescreen init` in the project, and `sidescreen start --open`
+- **AND** no step requires cloning the repository, linking a checkout, or keeping a terminal open
 
 ### Requirement: The installed copy is self-sufficient
 
