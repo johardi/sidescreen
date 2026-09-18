@@ -867,3 +867,47 @@ test('1.1 GET /api/health names sidescreen, the version, the pid, and the state 
   const refused = await rawRequest({ port, path: '/api/health', host: `evil.example:${port}` });
   assert.equal(refused.status, 403);
 });
+
+test('DELETE /api/sessions/<id> removes a session with its turns and threads, keeps carry-back, and says where the page goes next', async (t) => {
+  const a1 = sampleTurn({ promptId: 'a1', sessionId: 'sess-a', receivedAt: '2026-01-01T00:00:00.000Z' });
+  const a2 = sampleTurn({ promptId: 'a2', sessionId: 'sess-a', receivedAt: '2026-01-01T01:00:00.000Z' });
+  const b1 = sampleTurn({ promptId: 'b1', sessionId: 'sess-b', receivedAt: '2026-01-01T02:00:00.000Z' });
+  const { url, port, store } = await startServer(t, { turns: [a1, a2, b1] });
+  const project = projectId(a1.cwd);
+  const json = { 'Content-Type': 'application/json' };
+  const anchor = { start: { path: [0], offset: 0 }, end: { path: [0], offset: 3 }, text: 'The' };
+  assert.equal((await fetch(new URL('/api/turns/a1/threads', url), { method: 'POST', headers: json, body: JSON.stringify({ anchor, selectedText: 'The', question: 'q' }) })).status, 201);
+  assert.equal((await fetch(new URL('/api/sessions/sess-a/carry-back', url), { method: 'POST', headers: json, body: JSON.stringify({ text: 'Owed to the terminal.' }) })).status, 201);
+
+  assert.equal((await rawRequest({ port, path: '/api/sessions/sess-a', method: 'DELETE', headers: { Origin: 'https://evil.example' } })).status, 403);
+  assert.equal((await fetch(new URL('/api/sessions/nope', url), { method: 'DELETE' })).status, 404);
+  assert.ok((await store.read()).sessions['sess-a'], 'nothing removed yet');
+
+  const removed = await fetch(new URL('/api/sessions/sess-a', url), { method: 'DELETE' });
+  assert.equal(removed.status, 200);
+  const payload = await removed.json();
+  assert.deepEqual(payload.removed, { sessionId: 'sess-a', projectId: project, removedTurns: 2, removedThreads: 1 });
+  assert.equal(payload.next, `/projects/${project}`, 'the project still has another session');
+  let state = await store.read();
+  assert.equal(state.sessions['sess-a'], undefined);
+  assert.deepEqual(Object.keys(state.turns), ['b1']);
+  assert.equal(Object.keys(state.threads).length, 0);
+  assert.equal(state.carryBack['sess-a']?.length, 1, 'carry-back survives the session');
+  assert.equal((await fetch(new URL(`/projects/${project}/sessions/sess-a`, url))).status, 404);
+  assert.equal((await fetch(new URL(`/projects/${project}/sessions/sess-a/turns/a1`, url))).status, 404);
+
+  const last = await fetch(new URL('/api/sessions/sess-b', url), { method: 'DELETE' });
+  assert.equal(last.status, 200);
+  assert.equal((await last.json()).next, '/', 'no session left in the project');
+  assert.equal((await fetch(new URL(`/projects/${project}`, url))).status, 404);
+
+  const a3 = sampleTurn({ promptId: 'a3', sessionId: 'sess-a', receivedAt: '2026-01-01T03:00:00.000Z' });
+  await store.update((latest) => {
+    latest.turns.a3 = a3;
+    upsertSession(latest, a3);
+  });
+  const sidebar = await (await fetch(new URL(`/api/projects/${project}`, url))).json();
+  assert.deepEqual(sidebar.sessions.map((/** @type {{ sessionId: string }} */ session) => session.sessionId), ['sess-a'], 'the session delivers again and reappears');
+  state = await store.read();
+  assert.equal(state.carryBack['sess-a']?.length, 1, 'still owed');
+});

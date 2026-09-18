@@ -416,6 +416,35 @@ export class SidescreenServer {
   }
 
   /**
+   * Remove a whole session: its turns and their threads go, its carry-back
+   * stays. Says where a page showing one of its turns should go next.
+   *
+   * @param {http.IncomingMessage} req
+   * @param {http.ServerResponse} res
+   * @param {string} sessionId
+   */
+  async #apiRemoveSession(req, res, sessionId) {
+    if (!this.#assertSameOrigin(req, res)) return;
+    /** @type {import('../store/turns.js').RemovedSession|null} */
+    let removed = null;
+    const state = await this.store.update((latest) => {
+      removed = removeSession(latest, sessionId);
+    });
+    if (removed === null) {
+      sendJson(res, 404, { error: 'Session not found' });
+      return;
+    }
+    const { session, removedTurns, removedThreads } = /** @type {import('../store/turns.js').RemovedSession} */ (removed);
+    const id = projectId(session.cwd);
+    const projectRemains = findProject(state, id, [this.cwd]) !== null;
+    this.broadcast({ type: 'session-removed', sessionId, projectId: id, removedTurns, removedThreads });
+    sendJson(res, 200, {
+      removed: { sessionId, projectId: id, removedTurns, removedThreads },
+      next: projectRemains ? projectPath(id) : '/',
+    });
+  }
+
+  /**
    * @param {http.ServerResponse} res
    * @param {string} name
    */

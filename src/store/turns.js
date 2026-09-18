@@ -108,3 +108,39 @@ export function removeTurn(state, promptId) {
   if (sessionRemoved) delete state.sessions[turn.sessionId];
   return { turn, removedThreads, sessionRemoved };
 }
+
+/**
+ * @typedef {object} RemovedSession
+ * @property {import('../types.js').Session} session
+ * @property {number} removedTurns
+ * @property {number} removedThreads
+ */
+
+/**
+ * Remove a session with all of its turns and every thread anchored in them.
+ * Carry-back entries stay: the terminal session may still be running and is
+ * still owed them. The session's next ingested turn recreates it.
+ *
+ * @param {State} state
+ * @param {string} sessionId
+ * @returns {RemovedSession|null} Null when there is no such session.
+ */
+export function removeSession(state, sessionId) {
+  const session = state.sessions[sessionId];
+  if (!session) return null;
+  /** @type {Set<string>} */
+  const promptIds = new Set();
+  for (const [promptId, turn] of Object.entries(state.turns)) {
+    if (turn.sessionId !== sessionId) continue;
+    delete state.turns[promptId];
+    promptIds.add(promptId);
+  }
+  let removedThreads = 0;
+  for (const [threadId, thread] of Object.entries(state.threads)) {
+    if (!promptIds.has(thread.promptId)) continue;
+    delete state.threads[threadId];
+    removedThreads += 1;
+  }
+  delete state.sessions[sessionId];
+  return { session, removedTurns: promptIds.size, removedThreads };
+}
