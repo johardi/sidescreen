@@ -206,7 +206,7 @@ test('3.2 the open composer caps its height and scrolls its entries, with the te
   const pane = await page.locator('.document-pane').boundingBox();
   const composer = await page.locator('.composer').boundingBox();
   assert.ok(pane && composer);
-  assert.ok(composer.height <= pane.height * 0.6 + 1, `the composer stops at 60% of the pane: ${composer.height}`);
+  assert.ok(composer.height <= pane.height * 0.5 + 1, `the composer stops at half the pane: ${composer.height}`);
   const list = await page.locator('.carry-back-list').evaluate((node) => ({ scrollHeight: node.scrollHeight, clientHeight: node.clientHeight }));
   assert.ok(list.scrollHeight > list.clientHeight + 100, 'the entries scroll inside it');
   for (const selector of ['#carry-back-title', '#carry-back-text']) {

@@ -6,7 +6,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { openBrowser } from '../browser-helpers.js';
+import { dragSelect, openBrowser } from '../browser-helpers.js';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { sampleTurn, startServer, turnHref, waitForAnswer } from '../server-helpers.js';
 import { formatTime } from '../../src/format.js';
@@ -98,10 +98,10 @@ test('2.2 scrollbars are thin and show their thumb on hover only, and the panes 
     assert.equal(style.scrollbarWidth, 'thin', `${style.selector} has a thin scrollbar`);
     assert.equal(style.scrollbarColor, TRANSPARENT_PAIR, `${style.selector} hides the thumb at rest`);
   }
-  assert.equal(styles[1].paddingLeft, '40px');
-  assert.equal(styles[1].paddingRight, '40px');
-  assert.equal(styles[2].paddingLeft, '24px');
-  assert.equal(styles[2].paddingRight, '24px');
+  assert.equal(styles[1].paddingLeft, '64px');
+  assert.equal(styles[1].paddingRight, '64px');
+  assert.equal(styles[2].paddingLeft, '40px');
+  assert.equal(styles[2].paddingRight, '40px');
 
   await page.locator('.document-pane').hover({ position: { x: 20, y: 200 } });
   const hovered = await page.evaluate(() => getComputedStyle(/** @type {Element} */ (document.querySelector('.document-pane'))).scrollbarColor);
@@ -171,6 +171,7 @@ test('3.3 the footer holds the toggle, the switch, and the version; hidden, the 
   assert.equal(await page.locator('.topbar #sidebar-toggle').count(), 0, 'no toggle in the header');
   const footer = page.locator('.sidebar-footer');
   assert.equal(await footer.locator('#sidebar-toggle').count(), 1);
+  assert.equal(await footer.locator('#sidebar-toggle use').getAttribute('href'), '#icon-sidebar', 'the panel-left glyph');
   assert.equal(await footer.locator('#theme-switch').count(), 1);
   assert.equal(await footer.locator('.sidebar-version').textContent(), `v${VERSION}`);
   const footerBox = await footer.boundingBox();
@@ -392,7 +393,7 @@ test('4.2 Enter sends a follow-up and a branch, Shift+Enter breaks a line, Escap
 
   assert.equal(await page.locator('.follow-up-form button').count(), 0, 'no follow-up button');
   const field = page.locator('.follow-up-question');
-  assert.match((await field.getAttribute('placeholder')) ?? '', /Enter sends/);
+  assert.equal(await field.getAttribute('placeholder'), 'Ask a follow-up…');
   await field.fill('line one');
   await page.keyboard.press('Shift+Enter');
   assert.equal(await field.inputValue(), 'line one\n', 'Shift+Enter breaks a line');
@@ -472,23 +473,25 @@ test('5.1 the composer floats in the document pane\'s corner in three remembered
   assert.equal(await page.locator('.composer-body').isVisible(), false);
   assert.equal(await page.locator('#carry-back-title').textContent(), 'Carry back');
   assert.equal(await page.locator('#carry-back-count').textContent(), 'nothing pending');
-  assert.equal(bar.width, 320);
+  assert.ok(bar.width >= 320 && bar.width < pane.width - 32, `a compact bar sized to its content: ${bar.width}`);
+  assert.ok(bar.height <= 48, `on one line: ${bar.height}`);
   near(bar.x + bar.width, pane.x + pane.width - 16, 'anchored 16px from the pane\'s right edge');
   near(bar.y + bar.height, pane.y + pane.height - 16, 'and 16px from its bottom');
 
   await page.locator('#composer-bar').click();
   assert.equal(await composerState(page), 'open');
   const open = await box(page, '.composer');
-  assert.equal(open.width, 380);
-  assert.ok(open.height <= pane.height * 0.6 + 1, 'open, it takes at most 60% of the pane');
+  assert.equal(open.width, pane.width - 32, 'open, it spans the pane with 16px insets');
+  near(open.x, pane.x + 16, 'from the pane\'s left inset');
+  assert.ok(open.height <= pane.height * 0.5 + 1, 'and takes at most half the pane\'s height');
   assert.equal(await page.locator('#carry-back-text').isVisible(), true);
   assert.equal(await page.locator('#composer-maximize').getAttribute('aria-label'), 'Maximize the carry-back list');
 
   await page.locator('#composer-maximize').click();
   assert.equal(await composerState(page), 'maximized');
   const maximized = await box(page, '.composer');
-  assert.equal(maximized.width, Math.min(720, pane.width - 32));
-  near(maximized.height, pane.height * 0.85, 'maximized, it takes most of the pane');
+  assert.equal(maximized.width, pane.width - 32, 'maximized, the width is unchanged');
+  near(maximized.height, pane.height * 0.75, 'and the height grows to three quarters of the pane, not all of it');
   assert.equal(await page.locator('#composer-maximize').getAttribute('aria-label'), 'Restore the carry-back list');
 
   await page.route((request) => /\/assets\/(workspace|app)\.js$/.test(request.href), (route) => route.abort());
@@ -530,7 +533,8 @@ test('5.2 entries are added with Enter, edited in place, removed with one contro
   await page.locator('#composer-bar').click();
   assert.equal(await page.locator('#carry-back-add').count(), 0, 'no add button; Enter adds');
   const text = page.locator('#carry-back-text');
-  assert.match((await text.getAttribute('placeholder')) ?? '', /Enter adds it/);
+  assert.equal(await text.getAttribute('placeholder'), 'Enter a conclusion in your own words…');
+  assert.equal(await page.locator('.carry-back-hint').textContent(), 'Send these lines back to the terminal, as context on your next prompt. Once sent, they leave this list.');
   const documentBefore = await box(page, '.document-pane');
   const single = (await box(page, '#carry-back-text')).height;
 
@@ -604,5 +608,72 @@ test('5.3 the carry-back action opens a minimized composer with the answer draft
   await page.keyboard.press('Enter');
   await page.locator('.carry-back-entry').waitFor();
   assert.match((await page.locator('.carry-back-entry-text').textContent()) ?? '', /^Point 1 of the answer to first\?/);
+  assert.deepEqual(consoleErrors, []);
+});
+
+// ---- 7. Second review -----------------------------------------------------------------
+
+test('7.1 on a wide window both reading columns stand clear of their panes\' edges', async (t) => {
+  const { url } = await startServer(t, { dispatch: threadStub });
+  await seedAnsweredThread(url);
+  const { page, consoleErrors } = await openBrowser(t, { width: 1871, height: 868 });
+  await page.goto(new URL('/turns/prompt-1', url).href);
+  await page.locator('.source-badge').waitFor();
+  const pane = await box(page, '.document-pane');
+  const article = await box(page, '#document');
+  const left = article.x - pane.x;
+  const right = pane.x + pane.width - (article.x + article.width);
+  assert.ok(left >= 64 && right >= 64, `the document keeps at least 64px at each side: ${left} / ${right}`);
+  assert.ok(Math.abs(left - right) <= 1, 'and is centred');
+  const measured = await page.evaluate(() => {
+    const articleStyle = getComputedStyle(/** @type {Element} */ (document.getElementById('document')));
+    const exchangesStyle = getComputedStyle(/** @type {Element} */ (document.querySelector('.exchanges')));
+    const articleMax = parseFloat(articleStyle.maxWidth);
+    return { articleMax, ch: articleMax / 66, paddingLeft: parseFloat(exchangesStyle.paddingLeft), paddingRight: parseFloat(exchangesStyle.paddingRight) };
+  });
+  assert.ok(article.width <= measured.articleMax + 1, `the article is no wider than its 66ch column: ${article.width} vs ${measured.articleMax}`);
+  const thread = await box(page, '.thread-pane');
+  const exchanges = measured;
+  assert.ok(exchanges.paddingLeft >= 40 && Math.abs(exchanges.paddingLeft - exchanges.paddingRight) <= 1, 'the thread column is centred with at least 40px at each side');
+  assert.ok(thread.width - exchanges.paddingLeft - exchanges.paddingRight <= 72 * measured.ch + 1, 'and no wider than its 72ch column');
+  assert.ok(exchanges.paddingLeft > 40, `at this width the column, not the 40px minimum, sets the margin: ${exchanges.paddingLeft}px`);
+  assert.deepEqual(consoleErrors, []);
+});
+
+test('7.4 the landing page follows the colour scheme chosen in a workspace', async (t) => {
+  const { url } = await startServer(t);
+  const { page, consoleErrors } = await openBrowser(t, { width: 1200, height: 800 });
+  await page.emulateMedia({ colorScheme: 'light' });
+  await seedLayout(page, { theme: 'dark' });
+  await page.goto(url);
+  assert.equal(await page.evaluate(() => document.documentElement.getAttribute('data-theme')), 'dark');
+  assert.equal(await bodyBackground(page), DARK_BG, 'the landing page is dark too');
+  await page.goto(new URL('/nope', url).href);
+  assert.equal(await bodyBackground(page), DARK_BG, 'and so is the error page');
+  assert.deepEqual(consoleErrors.filter((message) => !/404/.test(message)), []);
+});
+
+test('7.6 the ask popover has no buttons: Enter asks, Escape closes', async (t) => {
+  const { url } = await startServer(t, { dispatch: threadStub });
+  const { page, consoleErrors } = await openBrowser(t, { width: 1200, height: 800 });
+  await page.goto(new URL('/turns/prompt-1', url).href);
+  await dragSelect(page, 'quick brown');
+  const popover = page.locator('#ask-popover');
+  await popover.waitFor({ state: 'visible' });
+  assert.equal(await popover.locator('button').count(), 0, 'no Cancel, no Ask');
+  assert.equal(await page.locator('#ask-question').getAttribute('placeholder'), 'Ask about this…');
+  await page.locator('#ask-question').fill('discarded?');
+  await page.keyboard.press('Escape');
+  await popover.waitFor({ state: 'hidden' });
+  assert.equal(await page.locator('.thread').count(), 0, 'Escape asks nothing');
+
+  await dragSelect(page, 'quick brown');
+  await popover.waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#ask-question').inputValue(), '', 'the field starts empty again');
+  await page.locator('#ask-question').fill('why quick?');
+  await page.keyboard.press('Enter');
+  await page.locator('.thread .question').waitFor();
+  assert.equal(await page.locator('.thread .question').textContent(), 'why quick?');
+  await popover.waitFor({ state: 'hidden' });
   assert.deepEqual(consoleErrors, []);
 });

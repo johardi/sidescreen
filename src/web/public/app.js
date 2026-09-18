@@ -23,8 +23,6 @@ const threadPane = /** @type {HTMLElement} */ (document.getElementById('thread-p
 const popover = /** @type {HTMLFormElement} */ (document.getElementById('ask-popover'));
 const selectionQuote = /** @type {HTMLElement} */ (document.getElementById('ask-selection'));
 const questionInput = /** @type {HTMLTextAreaElement} */ (document.getElementById('ask-question'));
-const cancelButton = /** @type {HTMLButtonElement} */ (document.getElementById('ask-cancel'));
-const submitButton = /** @type {HTMLButtonElement} */ (document.getElementById('ask-submit'));
 const composerBar = /** @type {HTMLElement} */ (document.getElementById('composer-bar'));
 const composerMinimize = /** @type {HTMLButtonElement} */ (document.getElementById('composer-minimize'));
 const composerMaximize = /** @type {HTMLButtonElement} */ (document.getElementById('composer-maximize'));
@@ -135,8 +133,6 @@ function hidePopover() {
   state.pendingAnchor = null;
 }
 
-cancelButton.addEventListener('click', hidePopover);
-
 questionInput.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     hidePopover();
@@ -151,7 +147,7 @@ popover.addEventListener('submit', async (event) => {
   const question = questionInput.value.trim();
   const anchor = state.pendingAnchor;
   if (question === '' || anchor === null) return;
-  submitButton.disabled = true;
+  questionInput.disabled = true;
   try {
     const { thread } = /** @type {{ thread: PresentedThread }} */ (
       await postJson(`/api/turns/${encodeURIComponent(state.turn.promptId)}/threads`, { anchor, selectedText: anchor.text, question })
@@ -166,7 +162,7 @@ popover.addEventListener('submit', async (event) => {
     popover.setAttribute('data-error', /** @type {Error} */ (error).message);
     selectionQuote.textContent = `Could not create the thread: ${/** @type {Error} */ (error).message}`;
   } finally {
-    submitButton.disabled = false;
+    questionInput.disabled = false;
   }
 });
 
@@ -469,7 +465,7 @@ function renderFollowUpForm(thread) {
     class: 'follow-up-question',
     rows: '2',
     'aria-label': 'Follow-up question. Enter sends, Shift+Enter breaks a line',
-    placeholder: waiting ? 'Waiting for the current answer…' : 'Ask a follow-up… Enter sends (@claude or @codex to switch)',
+    placeholder: waiting ? 'Waiting for the current answer…' : 'Ask a follow-up…',
   });
   input.disabled = waiting;
   input.addEventListener('keydown', submitOnEnter(form));

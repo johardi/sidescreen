@@ -29,14 +29,15 @@ export { preview } from '../format.js';
 const FONT_AWESOME_LICENSE =
   '<!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc. -->';
 
-const ICONS = /** @type {Record<string, { viewBox: string, path: string }>} */ ({
+const ICONS = /** @type {Record<string, { viewBox: string, path?: string, body?: string }>} */ ({
   'arrow-left': {
     viewBox: '0 0 448 512',
     path: 'M9.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.2 288 416 288c17.7 0 32-14.3 32-32s-14.3-32-32-32l-306.7 0L214.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z',
   },
-  'table-columns': {
-    viewBox: '0 0 512 512',
-    path: 'M0 96C0 60.7 28.7 32 64 32l384 0c35.3 0 64 28.7 64 64l0 320c0 35.3-28.7 64-64 64L64 480c-35.3 0-64-28.7-64-64L0 96zm64 64l0 256 160 0 0-256L64 160zm384 0l-160 0 0 256 160 0 0-256z',
+  // Ours, not Font Awesome's: a panel-left frame, the divider set off centre, a short line in the narrower pane.
+  sidebar: {
+    viewBox: '0 0 24 24',
+    body: '<rect x="3" y="4.5" width="18" height="15" rx="3.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9.5 4.5v15" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5.5 8.5h2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
   },
   comments: {
     viewBox: '0 0 640 512',
@@ -95,7 +96,7 @@ const ICONS = /** @type {Record<string, { viewBox: string, path: string }>} */ (
 /** The hidden sprite every icon on the page refers to. */
 function iconSprite() {
   const symbols = Object.entries(ICONS)
-    .map(([name, { viewBox, path }]) => `<symbol id="icon-${name}" viewBox="${viewBox}"><path d="${path}"/></symbol>`)
+    .map(([name, { viewBox, path, body }]) => `<symbol id="icon-${name}" viewBox="${viewBox}">${body ?? `<path d="${path}"/>`}</symbol>`)
     .join('');
   return `<svg class="icon-sprite" aria-hidden="true" focusable="false">${FONT_AWESOME_LICENSE}${symbols}</svg>`;
 }
@@ -105,7 +106,9 @@ export function icon(name) {
   return `<svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-${name}"></use></svg>`;
 }
 
-const HEAD_LINKS = `<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+/** Every page applies the remembered colour scheme before first paint, then loads the icon and the stylesheet. */
+const HEAD_LINKS = `<script src="/assets/layout-boot.js"></script>
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
 <link rel="stylesheet" href="/assets/app.css">`;
 
 /**
@@ -183,11 +186,7 @@ ${documentHtml}
     ? `<form id="ask-popover" class="ask-popover" hidden>
       <blockquote class="ask-selection" id="ask-selection"></blockquote>
       <label class="visually-hidden" for="ask-question">Question</label>
-      <textarea id="ask-question" class="ask-question" rows="2" placeholder="Ask about this… (@claude or @codex to pick who answers)" required></textarea>
-      <div class="ask-actions">
-        <button type="button" class="button-secondary" id="ask-cancel">Cancel</button>
-        <button type="submit" class="button-primary" id="ask-submit">Ask</button>
-      </div>
+      <textarea id="ask-question" class="ask-question" rows="2" placeholder="Ask about this…" aria-label="Question about the selection. Enter asks, Escape closes" required></textarea>
     </form>`
     : '';
 
@@ -204,11 +203,11 @@ ${documentHtml}
         </span>
       </header>
       <div class="composer-body">
-        <p class="carry-back-hint">Only these lines reach the terminal, as context on your next prompt in this session. Once sent, they leave this list. Select an entry to edit it.</p>
+        <p class="carry-back-hint">Send these lines back to the terminal, as context on your next prompt. Once sent, they leave this list.</p>
         <ul class="carry-back-list" id="carry-back-list"></ul>
         <form class="carry-back-form" id="carry-back-form">
           <label class="visually-hidden" for="carry-back-text">Conclusion to carry back. Enter adds it, Shift+Enter breaks a line</label>
-          <textarea id="carry-back-text" class="carry-back-text" rows="2" placeholder="A conclusion in your own words… Enter adds it"></textarea>
+          <textarea id="carry-back-text" class="carry-back-text" rows="2" placeholder="Enter a conclusion in your own words…"></textarea>
         </form>
       </div>
     </aside>`
@@ -232,7 +231,6 @@ ${documentHtml}
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SideScreen: ${escapeHtml(title)}</title>
-<script src="/assets/layout-boot.js"></script>
 ${HEAD_LINKS}
 </head>
 <body class="workspace">
@@ -255,7 +253,7 @@ ${warning}
 ${renderSidebar({ sidebar, scope, activePromptId: turn?.promptId ?? null })}
     </div>
     <footer class="sidebar-footer">
-      <button type="button" class="sidebar-toggle icon-button" id="sidebar-toggle" aria-pressed="false" aria-label="Hide sidebar" title="Hide sidebar">${icon('table-columns')}</button>
+      <button type="button" class="sidebar-toggle icon-button" id="sidebar-toggle" aria-pressed="false" aria-label="Hide sidebar" title="Hide sidebar">${icon('sidebar')}</button>
       <button type="button" class="theme-switch icon-button" id="theme-switch" aria-label="Colour scheme: system. Switch to light" title="Colour scheme: system. Switch to light">
         <span class="theme-icon" data-theme-icon="system">${icon('circle-half-stroke')}</span>
         <span class="theme-icon" data-theme-icon="light">${icon('sun')}</span>

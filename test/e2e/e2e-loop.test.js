@@ -87,7 +87,7 @@ async function askInBrowser(page, question) {
   await dragSelect(page, 'directory lock');
   await page.locator('#ask-popover').waitFor({ state: 'visible' });
   await page.locator('#ask-question').fill(question);
-  await page.locator('#ask-submit').click();
+  await page.locator('#ask-question').press('Enter');
   const thread = page.locator('.thread');
   await thread.locator('.source-badge').waitFor({ timeout: 15_000 });
   return thread;

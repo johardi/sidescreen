@@ -305,7 +305,11 @@ test('the favicon is served as SVG, and the icons carry the Font Awesome license
   const workspace = await (await fetch(new URL('/turns/prompt-1', url))).text();
   assert.match(workspace, /<svg class="icon-sprite"[^>]*><!--! Font Awesome Free .* License - https:\/\/fontawesome\.com\/license\/free/);
   assert.match(workspace, /<symbol id="icon-arrow-left"/);
-  assert.match(workspace, /<symbol id="icon-table-columns"/);
+  assert.match(workspace, /<symbol id="icon-sidebar"/);
+  for (const path of ['/', '/turns/prompt-1', '/nope']) {
+    const page = await (await fetch(new URL(path, url))).text();
+    assert.match(page, /<script src="\/assets\/layout-boot\.js"><\/script>/, `${path} applies the remembered scheme before first paint`);
+  }
 });
 
 test('creating a thread stores anchor, selection, and question, then records the dispatched answer', async (t) => {
