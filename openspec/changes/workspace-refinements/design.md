@@ -192,6 +192,11 @@ The second review set the widths from a screenshot at 1871px wide, where the doc
   Everything the user writes or the interface says stays in the interface face, so the reader tells the agent's voice from their own and from the chrome at a glance.
   Code inside either region stays monospace.
 
+### The default split favours the document
+
+Read on a wide screen, the equal split left the document cramped beside a thread pane with room to spare, so the grid's document track is `minmax(300px, 1.2fr)` against the thread pane's `minmax(260px, 1fr)`: six parts to five until the user drags a handle, and again when a double activation restores the default.
+The layout module still writes the thread pane's fractional track; only the document's weight changed, in the stylesheet.
+
 ### The sent note is a moment, not a tally
 
 The composer's "sent to the terminal" note used to count every entry ever emitted, so it grew for the life of the session and said nothing about what had just happened.

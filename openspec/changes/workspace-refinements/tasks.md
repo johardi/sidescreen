@@ -49,3 +49,7 @@
 - [x] 8.1 Make the composer's sent note name the latest batch only, entries that share one emit timestamp, and show it for 30 seconds after that emit, then clear it; verify with a browser test that two emits show the second batch's count rather than the total, that a reload within the window still shows it, and that a batch backdated past the window shows nothing
 - [x] 8.2 Set a platform serif face on the document and on the answer bodies only, sized 16px on 1.6 and 15px on 1.6, with code inside them still monospace; verify with a browser test that those two regions render in the serif stack and that the question, the follow-up field, the ask popover, the carry-back text box, the answer's source line, and the anchor numbers keep the interface face
 - [x] 8.3 Run `npm run check` and confirm lint, typecheck, and every test pass
+
+## 9. The default split
+
+- [x] 9.1 Weight the document's grid track at 1.2fr against the thread pane's 1fr so the default split is six to five, add the MODIFIED resizable requirement with its default-split scenario, and update the tests that expected equal widths; verify with the browser tests that a fresh workspace and a double-activated thread handle both show the document a fifth wider, and run `npm run check`
