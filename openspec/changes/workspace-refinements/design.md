@@ -47,9 +47,11 @@ The grid loses its second row; the sidebar no longer needs to span two rows.
 
 Three states, keyed on a `data-composer` attribute on the root element, which the stylesheet reads:
 
-- **minimized**: the header bar alone, 320px wide: the title, the pending count, and an expand control.
-- **open**: 380px wide, up to 60% of the pane's height: the header, the entries, the text box.
-- **maximized**: the smaller of 720px and the pane's width less 32px, and 85% of the pane's height.
+- **minimized**: the header bar alone, 320px wide in the corner: the title, the pending count, and an expand control.
+- **open**: the pane's width less the 16px insets, up to 50% of the pane's height: the header, the entries, the text box.
+- **maximized**: the same width, and 75% of the pane's height, taller but never the whole pane.
+
+The second review asked for the open composer to match the document's width and for maximizing to add height only, which is what these sizes do.
 
 The header bar is the control: clicking it opens a minimized composer, and it carries a minimize button and a maximize or restore button, in the manner of a mail client's compose window.
 The state is a field in the layout record, `composer`, applied by the boot script as `data-composer` on the root so the first frame is right; the default is minimized.
@@ -139,6 +141,7 @@ The existing class names stay so the tests that click them still find them.
 The sidebar becomes a flex column: a scrolling region for the sessions and a footer, `flex: none`, with a top rule.
 The footer holds the toggle, the scheme switch, a spacer, and the version in the small monospace face.
 The toggle keeps its id and its `aria-pressed`, so what the tests and the layout module know about it holds.
+Its glyph is a panel-left frame drawn in the sprite, a rounded rectangle with a divider and a short line in the narrower left pane, since Font Awesome Free has no such icon; it is the one symbol in the sprite that is not theirs.
 
 Hidden means `--sidebar-column: 40px` instead of 0, the handle's column at 0, the scrolling region hidden, the version hidden, and the footer laid out as a column with the two buttons at its foot.
 The toggle and the switch therefore never move: the corner the user reached for is the corner they find.
@@ -154,6 +157,7 @@ Choosing a scheme sets `data-theme="light"` or `data-theme="dark"` on the root, 
 Because `color-scheme` also drives form controls and native scrollbars, the text areas and the thin scrollbars follow the scheme without extra rules.
 
 The choice is a `theme` field in the layout record, applied by the boot script before first paint.
+The landing page and the error page load the same boot script, so the choice made in a workspace holds on every page of the surface.
 The switch cycles system, light, dark; its icon is `circle-half-stroke`, `sun`, or `moon`, and its label names the state in effect and what a click does next.
 
 Alternatives considered:
@@ -174,7 +178,9 @@ Showing the thumb only while the pointer is over the region is what "hidden when
 
 ### Margins
 
-The document pane's side padding grows from 16px to 40px and the thread pane's from 16px to 24px, applied to the pane's top block, its exchanges, and its form so the rule between them runs the pane's full width.
+The document pane's side padding grows from 16px to 64px, and its article narrows from a 76ch to a 66ch centred column, so on a wide pane the text sits well clear of either edge.
+The thread pane's top block, exchanges, and field share a centred 72ch column with at least 40px at each side, applied as padding on each part so the rule between them still runs the pane's full width.
+The second review set both widths from a screenshot at 1871px wide, where the document's text measured 66 characters and the thread's 72, each about 80px from its pane's edges.
 
 ### Tokens added
 

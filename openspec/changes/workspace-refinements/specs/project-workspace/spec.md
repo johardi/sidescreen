@@ -62,7 +62,7 @@ At desktop widths the workspace SHALL fit the browser window exactly, with no sc
 The header SHALL stay at the top, fully visible whatever the sidebar, the document, or the thread pane is scrolled to.
 The sidebar SHALL run the full height below the header.
 The sidebar, the document, and the thread pane's exchanges SHALL each scroll on their own.
-The carry-back list SHALL be a floating composer anchored to the bottom right corner of the document pane, in one of three states: minimized to a bar that names the list and its pending count; open, with its entries above a text box; or maximized to most of the pane's width and height, for a long conclusion.
+The carry-back list SHALL be a floating composer anchored to the bottom of the document pane, in one of three states: minimized to a bar in the pane's corner that names the list and its pending count; open, spanning the pane's width with its entries above a text box; or maximized, the same width and most of the pane's height but never all of it, for a long conclusion.
 The composer SHALL stay in place whatever the document is scrolled to, its entries SHALL scroll inside it when they outgrow it, and its text box SHALL stay visible while it is open.
 The end of the document SHALL remain readable above the minimized bar.
 At narrow widths the panes SHALL stack, the page SHALL scroll as one with no horizontal scrolling, and the composer SHALL follow the document instead of floating.
@@ -87,7 +87,7 @@ At narrow widths the panes SHALL stack, the page SHALL scroll as one with no hor
 
 - **WHEN** the user minimizes the composer
 - **THEN** only a bar remains, naming the list and how many entries are pending
-- **AND** maximizing it from open grows it to most of the document pane, and restoring returns it to its open size
+- **AND** opening it spans the document pane's width, maximizing adds height without reaching the pane's full height, and restoring returns it to its open size
 
 #### Scenario: A long conclusion
 
@@ -244,7 +244,7 @@ Removal SHALL be accepted only from the surface's own origin, like every other s
 ### Requirement: The colour scheme can be chosen
 
 The sidebar's footer SHALL provide a switch that cycles the colour scheme through following the system, light, and dark, and the switch SHALL say which is in effect.
-The chosen scheme SHALL apply to the whole workspace.
+The chosen scheme SHALL apply to every page of the surface, the landing page included.
 When no choice has been made the workspace SHALL follow the system's scheme, and SHALL follow it as it changes.
 
 #### Scenario: Choosing dark on a light system
@@ -261,6 +261,11 @@ When no choice has been made the workspace SHALL follow the system's scheme, and
 
 - **WHEN** the sidebar is hidden
 - **THEN** the switch is still on the rail and still cycles the scheme
+
+#### Scenario: The landing page follows the choice
+
+- **WHEN** the user has chosen the dark scheme in a workspace and opens the landing page
+- **THEN** the landing page renders in the dark palette from its first frame
 
 ### Requirement: The thread pane keeps its field in reach
 

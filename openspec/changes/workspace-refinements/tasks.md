@@ -33,3 +33,13 @@
 - [x] 6.1 Update `README.md`: the tree and its menu, removing a session, the composer and editing entries, the colour-scheme switch and the footer, Enter to send; verify by reading it against both delta specs
 - [x] 6.2 Review on screen at 1440 by 900 and 1200 by 800, light and dark, with the composer in each state, the sidebar shown and as a rail, a menu open, and a long thread; fix what is off and keep the screenshots under `.playwright-mcp/`
 - [x] 6.3 Run `npm run check` and confirm lint, typecheck, and every test pass
+
+## 7. Second review
+
+- [x] 7.1 Widen the reading margins: the document pane's side padding to 64px with the article narrowed to a centred 66ch column, and the thread pane's top block, exchanges, and field on a centred 72ch column with at least 40px at each side; verify with the browser test on computed padding at 1200 wide and a check at 1871 wide that both columns sit about 80px from their pane's edges
+- [x] 7.2 Reword: the composer's text box placeholder to "Enter a conclusion in your own words…", its hint to "Send these lines back to the terminal, as context on your next prompt. Once sent, they leave this list.", the follow-up field's placeholder to "Ask a follow-up…", and the ask popover's to "Ask about this…"; verify with the browser tests that assert each placeholder
+- [x] 7.3 Replace the sidebar toggle's icon with a panel-left glyph drawn in the sprite (a rounded frame with a divider and a short line in the narrower left pane), ours rather than Font Awesome's; verify with a browser test that the toggle references the new symbol
+- [x] 7.4 Load the layout boot script on the landing page and the error page too, so the chosen colour scheme applies there; verify with a browser test that a remembered dark scheme renders the landing page dark and a server test that both pages carry the script
+- [x] 7.5 Size the composer to the document pane: open and maximized span the pane's width with 16px insets, open up to 50% of the pane's height, maximized a fixed 75%, the minimized bar unchanged in the corner; verify with the browser tests on the composer's boxes in each state
+- [x] 7.6 Remove the Cancel and Ask buttons from the ask popover, leaving Escape and Enter; verify with a browser test that the popover has no buttons, Escape closes it, and Enter still asks
+- [x] 7.7 Review on screen at 1440 by 900 and 1871 by 868, then run `npm run check` and confirm lint, typecheck, and every test pass
