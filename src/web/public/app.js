@@ -6,6 +6,7 @@ import { describeRange, resolveAnchor } from './anchor.js';
 import { clearMarks, wrapRange } from './marks.js';
 import { familyOf, rootOf, rootThreads } from './thread-tree.js';
 import { events } from './events.js';
+import { composerState, rememberComposer } from './layout.js';
 
 /** @typedef {import('../../store/threads.js').Exchange & { answerHtml: string|null }} PresentedExchange */
 /** @typedef {Omit<import('../../store/threads.js').Thread, 'exchanges'> & { exchanges: PresentedExchange[], detached?: boolean }} PresentedThread */
@@ -24,13 +25,14 @@ const selectionQuote = /** @type {HTMLElement} */ (document.getElementById('ask-
 const questionInput = /** @type {HTMLTextAreaElement} */ (document.getElementById('ask-question'));
 const cancelButton = /** @type {HTMLButtonElement} */ (document.getElementById('ask-cancel'));
 const submitButton = /** @type {HTMLButtonElement} */ (document.getElementById('ask-submit'));
-const carryBackSection = /** @type {HTMLElement} */ (document.getElementById('carry-back'));
+const composerBar = /** @type {HTMLElement} */ (document.getElementById('composer-bar'));
+const composerMinimize = /** @type {HTMLButtonElement} */ (document.getElementById('composer-minimize'));
+const composerMaximize = /** @type {HTMLButtonElement} */ (document.getElementById('composer-maximize'));
 const carryBackCount = /** @type {HTMLElement} */ (document.getElementById('carry-back-count'));
 const carryBackSent = /** @type {HTMLElement} */ (document.getElementById('carry-back-sent'));
 const carryBackList = /** @type {HTMLElement} */ (document.getElementById('carry-back-list'));
 const carryBackForm = /** @type {HTMLFormElement} */ (document.getElementById('carry-back-form'));
 const carryBackText = /** @type {HTMLTextAreaElement} */ (document.getElementById('carry-back-text'));
-const carryBackAdd = /** @type {HTMLButtonElement} */ (document.getElementById('carry-back-add'));
 
 const state = {
   turn: initial.turn,
@@ -324,8 +326,9 @@ function renderThread(thread, root, index, chips) {
       carryButton.addEventListener('click', () => {
         if (carryBackText.value.trim() === '') carryBackText.value = answerPlainText(exchange);
         carryBackText.dataset.threadId = thread.id;
-        carryBackSection.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        carryBackText.focus({ preventScroll: true });
+        if (composerState() === 'minimized') setComposer('open');
+        fitTextarea(carryBackText);
+        carryBackText.focus();
       });
       const branchButton = iconButton('branch-button', 'code-branch', 'Branch from here');
       branchButton.addEventListener('click', () => {
@@ -576,44 +579,156 @@ function element(tag, attributes = {}, text) {
   return node;
 }
 
-// ---- Carry back --------------------------------------------------------------
+// ---- The composer: carry back, floating in the document pane's corner ----------------
+
+/** Name what the maximize control will do from the state the composer is in. */
+function syncComposerLabels() {
+  const maximized = composerState() === 'maximized';
+  composerMaximize.setAttribute('aria-label', maximized ? 'Restore the carry-back list' : 'Maximize the carry-back list');
+  composerMaximize.setAttribute('title', maximized ? 'Restore' : 'Maximize');
+}
+
+/** @param {import('./layout.js').ComposerState} next */
+function setComposer(next) {
+  rememberComposer(next);
+  syncComposerLabels();
+}
+
+composerBar.addEventListener('click', (event) => {
+  if (event.target instanceof Element && event.target.closest('button')) return;
+  setComposer(composerState() === 'minimized' ? 'open' : 'minimized');
+});
+composerMinimize.addEventListener('click', () => setComposer('minimized'));
+composerMaximize.addEventListener('click', () => setComposer(composerState() === 'maximized' ? 'open' : 'maximized'));
+syncComposerLabels();
+
+/**
+ * Let a text area grow with what is typed; the stylesheet caps it and scrolls past the cap.
+ *
+ * @param {HTMLTextAreaElement} field
+ */
+function fitTextarea(field) {
+  field.style.height = 'auto';
+  field.style.height = `${field.scrollHeight + 2}px`;
+}
+
+/**
+ * The entry being edited when the list is about to be re-rendered, so the
+ * edit survives an event's refresh.
+ *
+ * @returns {{ id: string, value: string, start: number, end: number }|null}
+ */
+function editingEntry() {
+  const field = carryBackList.querySelector('.carry-back-entry-edit');
+  if (!(field instanceof HTMLTextAreaElement) || field.hasAttribute('data-done')) return null;
+  const id = field.closest('.carry-back-entry')?.getAttribute('data-entry-id');
+  return id ? { id, value: field.value, start: field.selectionStart, end: field.selectionEnd } : null;
+}
+
+/**
+ * The field an entry's text becomes when it is edited in place: Enter saves,
+ * Escape restores, and leaving the field saves a change.
+ *
+ * @param {CarryBackEntry} entry
+ * @param {{ value: string, start: number, end: number }|null} draft What was typed before a re-render, if any.
+ */
+function editField(entry, draft) {
+  const field = element('textarea', { class: 'carry-back-entry-edit', rows: '1', 'aria-label': 'Edit this entry. Enter saves, Escape cancels' });
+  field.value = draft ? draft.value : entry.text;
+  /** @param {boolean} save */
+  const finish = async (save) => {
+    if (field.hasAttribute('data-done')) return;
+    field.setAttribute('data-done', '');
+    const text = field.value.trim();
+    if (!save || text === '' || text === entry.text) {
+      renderCarryBack();
+      return;
+    }
+    try {
+      const { entries } = /** @type {{ entries: CarryBackEntry[] }} */ (
+        await sendJson('PATCH', `/api/sessions/${encodeURIComponent(state.turn.sessionId)}/carry-back/${encodeURIComponent(entry.id)}`, { text })
+      );
+      state.carryBack = entries;
+      renderCarryBack();
+    } catch (error) {
+      renderCarryBack();
+      showFormError(carryBackForm, /** @type {Error} */ (error));
+    }
+  };
+  field.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      finish(true);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      finish(false);
+    }
+  });
+  field.addEventListener('blur', () => finish(true));
+  field.addEventListener('input', () => fitTextarea(field));
+  return field;
+}
+
+/**
+ * @param {HTMLTextAreaElement} field
+ * @param {{ start: number, end: number }|null} caret
+ */
+function focusEdit(field, caret) {
+  fitTextarea(field);
+  field.focus();
+  const at = caret ?? { start: field.value.length, end: field.value.length };
+  field.setSelectionRange(at.start, at.end);
+}
 
 function renderCarryBack() {
   const pending = state.carryBack.filter((entry) => entry.emittedAt === null);
   const sent = state.carryBack.length - pending.length;
   carryBackCount.textContent = pending.length === 0 ? 'nothing pending' : `${pending.length} pending`;
   carryBackSent.textContent = sent === 0 ? '' : `${sent} sent to the terminal`;
+  const editing = editingEntry();
   carryBackList.replaceChildren();
   // Sent entries have done their job and would only invite a second reading; the count above is their trace.
   for (const entry of pending) {
     const item = element('li', { class: 'carry-back-entry', 'data-entry-id': entry.id });
-    item.append(element('span', { class: 'carry-back-entry-text' }, entry.text));
-    {
-      const remove = element('button', { type: 'button', class: 'carry-back-remove', 'aria-label': 'Remove this entry' }, 'Remove');
-      remove.addEventListener('click', async () => {
-        remove.disabled = true;
-        try {
-          const response = await fetch(`/api/sessions/${encodeURIComponent(state.turn.sessionId)}/carry-back/${encodeURIComponent(entry.id)}`, { method: 'DELETE' });
-          if (!response.ok) throw new Error(`Request failed with ${response.status}`);
-          const { entries } = /** @type {{ entries: CarryBackEntry[] }} */ (await response.json());
-          state.carryBack = entries;
-          renderCarryBack();
-        } catch {
-          remove.disabled = false;
-        }
+    if (editing && editing.id === entry.id) {
+      const field = editField(entry, editing);
+      item.append(field);
+      carryBackList.append(item);
+      focusEdit(field, editing);
+    } else {
+      const text = element('button', { type: 'button', class: 'carry-back-entry-text', title: 'Edit this entry' }, entry.text);
+      text.addEventListener('click', () => {
+        const field = editField(entry, null);
+        text.replaceWith(field);
+        focusEdit(field, null);
       });
-      item.append(remove);
+      item.append(text);
     }
-    carryBackList.append(item);
+    const remove = iconButton('carry-back-remove', 'xmark', 'Remove this entry');
+    remove.addEventListener('click', async () => {
+      remove.disabled = true;
+      try {
+        const response = await fetch(`/api/sessions/${encodeURIComponent(state.turn.sessionId)}/carry-back/${encodeURIComponent(entry.id)}`, { method: 'DELETE' });
+        if (!response.ok) throw new Error(`Request failed with ${response.status}`);
+        const { entries } = /** @type {{ entries: CarryBackEntry[] }} */ (await response.json());
+        state.carryBack = entries;
+        renderCarryBack();
+      } catch {
+        remove.disabled = false;
+      }
+    });
+    item.append(remove);
+    if (!item.isConnected) carryBackList.append(item);
   }
 }
 
 carryBackText.addEventListener('keydown', submitOnEnter(carryBackForm));
+carryBackText.addEventListener('input', () => fitTextarea(carryBackText));
 carryBackForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const text = carryBackText.value.trim();
   if (text === '') return;
-  carryBackAdd.disabled = true;
+  carryBackText.disabled = true;
   try {
     const { entries } = /** @type {{ entries: CarryBackEntry[] }} */ (
       await postJson(`/api/sessions/${encodeURIComponent(state.turn.sessionId)}/carry-back`, { text, threadId: carryBackText.dataset.threadId ?? null })
@@ -625,7 +740,9 @@ carryBackForm.addEventListener('submit', async (event) => {
   } catch (error) {
     showFormError(carryBackForm, /** @type {Error} */ (error));
   } finally {
-    carryBackAdd.disabled = false;
+    carryBackText.disabled = false;
+    fitTextarea(carryBackText);
+    carryBackText.focus();
   }
 });
 
@@ -643,8 +760,18 @@ function answerPlainText(exchange) {
  * @param {unknown} body
  * @returns {Promise<unknown>}
  */
-async function postJson(path, body) {
-  const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+function postJson(path, body) {
+  return sendJson('POST', path, body);
+}
+
+/**
+ * @param {'POST'|'PATCH'} method
+ * @param {string} path
+ * @param {unknown} body
+ * @returns {Promise<unknown>}
+ */
+async function sendJson(method, path, body) {
+  const response = await fetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!response.ok) {
     const payload = /** @type {{ error?: string }} */ (await response.json().catch(() => ({})));
     throw new Error(payload.error ?? `Request failed with ${response.status}`);

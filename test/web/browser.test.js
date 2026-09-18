@@ -359,6 +359,7 @@ test('6.1 carry-back entries added in the page survive a reload, and an answer c
   await page.goto(new URL('/turns/prompt-1', url).href);
   assert.equal(await page.locator('#carry-back-count').textContent(), 'nothing pending');
 
+  await page.locator('#composer-bar').click();
   await page.locator('#carry-back-text').fill('The directory lock stays.');
   await page.keyboard.press('Enter');
   await page.locator('.carry-back-entry').waitFor();
@@ -366,7 +367,7 @@ test('6.1 carry-back entries added in the page survive a reload, and an answer c
 
   await page.locator('.carry-button').first().click();
   assert.equal(await page.locator('#carry-back-text').inputValue(), 'Answer to why the lock?', 'the answer text seeds the draft');
-  await page.locator('#carry-back-add').click();
+  await page.locator('#carry-back-text').press('Enter');
   await page.locator('.carry-back-entry').nth(1).waitFor();
 
   await page.reload();
@@ -374,6 +375,7 @@ test('6.1 carry-back entries added in the page survive a reload, and an answer c
   assert.deepEqual(await page.locator('.carry-back-entry-text').allTextContents(), ['The directory lock stays.', 'Answer to why the lock?']);
   assert.equal(await page.locator('#carry-back-count').textContent(), '2 pending');
 
+  await page.locator('.carry-back-entry').nth(1).hover();
   await page.locator('.carry-back-remove').nth(1).click();
   await page.locator('.carry-back-entry').nth(1).waitFor({ state: 'detached' });
   await page.reload();

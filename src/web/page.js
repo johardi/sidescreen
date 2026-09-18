@@ -191,27 +191,34 @@ ${documentHtml}
     </form>`
     : '';
 
+  // The composer floats in the document pane's corner, in the manner of a mail client's compose window: a bar, or open, or maximized.
+  const composer = turn
+    ? `<aside class="composer" id="carry-back" aria-labelledby="carry-back-title">
+      <header class="composer-bar" id="composer-bar" title="Open or minimize the carry-back list">
+        <h2 class="carry-back-title" id="carry-back-title">Carry back</h2>
+        <span class="carry-back-count" id="carry-back-count"></span>
+        <span class="carry-back-sent-note" id="carry-back-sent"></span>
+        <span class="composer-controls">
+          <button type="button" class="icon-button composer-minimize" id="composer-minimize" aria-label="Minimize the carry-back list" title="Minimize">${icon('minus')}</button>
+          <button type="button" class="icon-button composer-maximize" id="composer-maximize" aria-label="Maximize the carry-back list" title="Maximize">${icon('maximize')}${icon('restore')}</button>
+        </span>
+      </header>
+      <div class="composer-body">
+        <p class="carry-back-hint">Only these lines reach the terminal, as context on your next prompt in this session. Once sent, they leave this list. Select an entry to edit it.</p>
+        <ul class="carry-back-list" id="carry-back-list"></ul>
+        <form class="carry-back-form" id="carry-back-form">
+          <label class="visually-hidden" for="carry-back-text">Conclusion to carry back. Enter adds it, Shift+Enter breaks a line</label>
+          <textarea id="carry-back-text" class="carry-back-text" rows="2" placeholder="A conclusion in your own words… Enter adds it"></textarea>
+        </form>
+      </div>
+    </aside>`
+    : '';
+
   const reviewZones = turn
     ? `<div class="pane-handle" id="thread-handle" role="separator" aria-orientation="vertical" aria-label="Thread pane width" tabindex="0" data-pane="thread"></div>
   <aside class="thread-pane" id="thread-pane" aria-live="polite">
     <p class="thread-empty">Select text in the document to ask about it.</p>
-  </aside>
-  <section class="carry-back" id="carry-back" aria-labelledby="carry-back-title">
-    <header class="carry-back-header">
-      <h2 class="carry-back-title" id="carry-back-title">Carry back</h2>
-      <span class="carry-back-count" id="carry-back-count"></span>
-      <span class="carry-back-sent-note" id="carry-back-sent"></span>
-      <span class="carry-back-hint">Only these lines reach the terminal, as context on your next prompt in this session. Once sent, they leave this list.</span>
-    </header>
-    <ul class="carry-back-list" id="carry-back-list"></ul>
-    <form class="carry-back-form" id="carry-back-form">
-      <label class="visually-hidden" for="carry-back-text">Conclusion to carry back</label>
-      <textarea id="carry-back-text" class="carry-back-text" rows="2" placeholder="A conclusion to carry back, in your own words…"></textarea>
-      <div class="form-actions">
-        <button type="submit" class="button-primary" id="carry-back-add">Add to carry-back</button>
-      </div>
-    </form>
-  </section>`
+  </aside>`
     : '';
 
   const turnScripts = turnData
@@ -258,10 +265,13 @@ ${renderSidebar({ sidebar, scope, activePromptId: turn?.promptId ?? null })}
     </footer>
   </nav>
   <div class="pane-handle" id="sidebar-handle" role="separator" aria-orientation="vertical" aria-label="Sidebar width" tabindex="0" data-pane="sidebar"></div>
-  <section class="document-pane" id="document-pane">
-    <div class="follow-notice" id="follow-notice" role="status" hidden></div>
-    ${documentPane}
-    ${popover}
+  <section class="document-cell">
+    <div class="document-pane" id="document-pane">
+      <div class="follow-notice" id="follow-notice" role="status" hidden></div>
+      ${documentPane}
+      ${popover}
+    </div>
+    ${composer}
   </section>
   ${reviewZones}
 </main>

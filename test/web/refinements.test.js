@@ -445,3 +445,164 @@ test('4.3 the actions under an answer are two icon controls at the left, named b
   assert.ok(branchBox.x > carryBox.x && branchBox.x < answer.x + answer.width / 2, 'branch from here sits right after it');
   assert.deepEqual(consoleErrors, []);
 });
+
+// ---- 5. The carry-back composer ------------------------------------------------------
+
+/** @param {import('playwright').Page} page */
+const composerState = (page) => page.evaluate(() => document.documentElement.getAttribute('data-composer'));
+
+/**
+ * @param {number} actual
+ * @param {number} expected
+ * @param {string} what
+ */
+function near(actual, expected, what) {
+  assert.ok(Math.abs(actual - expected) <= 1, `${what}: ${actual} is not within 1px of ${expected}`);
+}
+
+test('5.1 the composer floats in the document pane\'s corner in three remembered states, and follows the document on a narrow window', async (t) => {
+  const long = sampleTurn({ message: Array.from({ length: 80 }, (_, index) => `Paragraph ${index + 1} of a long turn.`).join('\n\n') });
+  const { url } = await startServer(t, { turns: [long] });
+  const { page } = await openBrowser(t, { width: 1200, height: 800 });
+  await page.goto(new URL('/turns/prompt-1', url).href);
+
+  const pane = await box(page, '.document-pane');
+  const bar = await box(page, '.composer');
+  assert.ok([null, 'minimized'].includes(await composerState(page)), 'minimized by default');
+  assert.equal(await page.locator('.composer-body').isVisible(), false);
+  assert.equal(await page.locator('#carry-back-title').textContent(), 'Carry back');
+  assert.equal(await page.locator('#carry-back-count').textContent(), 'nothing pending');
+  assert.equal(bar.width, 320);
+  near(bar.x + bar.width, pane.x + pane.width - 16, 'anchored 16px from the pane\'s right edge');
+  near(bar.y + bar.height, pane.y + pane.height - 16, 'and 16px from its bottom');
+
+  await page.locator('#composer-bar').click();
+  assert.equal(await composerState(page), 'open');
+  const open = await box(page, '.composer');
+  assert.equal(open.width, 380);
+  assert.ok(open.height <= pane.height * 0.6 + 1, 'open, it takes at most 60% of the pane');
+  assert.equal(await page.locator('#carry-back-text').isVisible(), true);
+  assert.equal(await page.locator('#composer-maximize').getAttribute('aria-label'), 'Maximize the carry-back list');
+
+  await page.locator('#composer-maximize').click();
+  assert.equal(await composerState(page), 'maximized');
+  const maximized = await box(page, '.composer');
+  assert.equal(maximized.width, Math.min(720, pane.width - 32));
+  near(maximized.height, pane.height * 0.85, 'maximized, it takes most of the pane');
+  assert.equal(await page.locator('#composer-maximize').getAttribute('aria-label'), 'Restore the carry-back list');
+
+  await page.route((request) => /\/assets\/(workspace|app)\.js$/.test(request.href), (route) => route.abort());
+  await page.reload();
+  assert.equal(await composerState(page), 'maximized', 'the state is on the root before any module runs');
+  assert.equal(await page.locator('.composer-body').isVisible(), true);
+  await page.unrouteAll();
+  await page.reload();
+
+  await page.locator('#composer-maximize').click();
+  assert.equal(await composerState(page), 'open', 'restore returns to open');
+  await page.locator('#composer-minimize').click();
+  assert.equal(await composerState(page), 'minimized');
+  await page.evaluate(() => {
+    const documentPane = /** @type {HTMLElement} */ (document.querySelector('.document-pane'));
+    documentPane.scrollTop = documentPane.scrollHeight;
+  });
+  const end = await page.evaluate(() => ({
+    pageScrollHeight: document.documentElement.scrollHeight,
+    viewportHeight: innerHeight,
+    lastLine: document.getElementById('document')?.getBoundingClientRect().bottom ?? Infinity,
+    composerTop: document.querySelector('.composer')?.getBoundingClientRect().top ?? -Infinity,
+  }));
+  assert.ok(end.pageScrollHeight <= end.viewportHeight, 'no page scroll');
+  assert.ok(end.lastLine <= end.composerTop, `the document's last line clears the bar: ${end.lastLine} vs ${end.composerTop}`);
+
+  await page.setViewportSize({ width: 400, height: 800 });
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  assert.equal(await page.evaluate(() => getComputedStyle(/** @type {Element} */ (document.querySelector('.composer'))).position), 'static');
+  const article = await box(page, '#document');
+  const narrow = await box(page, '.composer');
+  assert.ok(narrow.y >= article.y + article.height - 1, 'on a narrow window the composer follows the document');
+});
+
+test('5.2 entries are added with Enter, edited in place, removed with one control, and the text box grows with its text', async (t) => {
+  const { url, store } = await startServer(t);
+  const { page, consoleErrors } = await openBrowser(t, { width: 1200, height: 800 });
+  await page.goto(new URL('/turns/prompt-1', url).href);
+  await page.locator('#composer-bar').click();
+  assert.equal(await page.locator('#carry-back-add').count(), 0, 'no add button; Enter adds');
+  const text = page.locator('#carry-back-text');
+  assert.match((await text.getAttribute('placeholder')) ?? '', /Enter adds it/);
+  const documentBefore = await box(page, '.document-pane');
+  const single = (await box(page, '#carry-back-text')).height;
+
+  await text.click();
+  await page.keyboard.type('First line');
+  for (let index = 0; index < 4; index += 1) {
+    await page.keyboard.press('Shift+Enter');
+    await page.keyboard.type(`line ${index + 2}`);
+  }
+  assert.equal(await page.locator('.carry-back-entry').count(), 0, 'Shift+Enter adds nothing');
+  assert.ok((await box(page, '#carry-back-text')).height > single + 40, 'the text box grew with five lines');
+  assert.deepEqual(await box(page, '.document-pane'), documentBefore, 'and nothing else moved');
+
+  await page.keyboard.press('Enter');
+  await page.locator('.carry-back-entry').waitFor();
+  assert.equal(await text.inputValue(), '');
+  near((await box(page, '#carry-back-text')).height, single, 'the box shrinks back');
+  const entry = page.locator('.carry-back-entry').first();
+  assert.match((await entry.locator('.carry-back-entry-text').textContent()) ?? '', /^First line\nline 2/);
+  assert.equal(await page.locator('#carry-back-count').textContent(), '1 pending');
+
+  // Edit in place: Enter saves.
+  await entry.locator('.carry-back-entry-text').click();
+  const field = entry.locator('.carry-back-entry-edit');
+  await field.waitFor();
+  assert.equal(await field.evaluate((node) => document.activeElement === node), true, 'the field takes focus');
+  await field.fill('Edited wording.');
+  await page.keyboard.press('Enter');
+  await entry.locator('.carry-back-entry-text').waitFor();
+  assert.equal(await entry.locator('.carry-back-entry-text').textContent(), 'Edited wording.');
+  assert.equal((await store.read()).carryBack['session-1']?.[0]?.text, 'Edited wording.', 'saved to the store');
+
+  // Escape restores.
+  await entry.locator('.carry-back-entry-text').click();
+  await field.fill('Discarded wording.');
+  await page.keyboard.press('Escape');
+  await entry.locator('.carry-back-entry-text').waitFor();
+  assert.equal(await entry.locator('.carry-back-entry-text').textContent(), 'Edited wording.');
+
+  // Leaving the field saves a change.
+  await entry.locator('.carry-back-entry-text').click();
+  await field.fill('Blurred wording.');
+  await page.locator('.carry-back-hint').click();
+  await entry.locator('.carry-back-entry-text').waitFor();
+  assert.equal(await entry.locator('.carry-back-entry-text').textContent(), 'Blurred wording.');
+  assert.equal((await store.read()).carryBack['session-1']?.[0]?.text, 'Blurred wording.');
+
+  // One control removes.
+  const remove = entry.locator('.carry-back-remove');
+  assert.equal(await remove.getAttribute('aria-label'), 'Remove this entry');
+  await entry.hover();
+  await remove.click();
+  await entry.waitFor({ state: 'detached' });
+  assert.equal(await page.locator('#carry-back-count').textContent(), 'nothing pending');
+  assert.deepEqual(consoleErrors, []);
+});
+
+test('5.3 the carry-back action opens a minimized composer with the answer drafted and the text box focused', async (t) => {
+  const { url } = await startServer(t, { dispatch: threadStub });
+  await seedAnsweredThread(url);
+  const { page, consoleErrors } = await openBrowser(t, { width: 1200, height: 800 });
+  await page.goto(new URL('/turns/prompt-1', url).href);
+  await page.locator('.source-badge').waitFor();
+  assert.equal(await page.locator('.composer-body').isVisible(), false, 'minimized to begin with');
+
+  await page.locator('.carry-button').first().click();
+  assert.equal(await composerState(page), 'open');
+  const text = page.locator('#carry-back-text');
+  assert.match(await text.inputValue(), /^Point 1 of the answer to first\?/, 'the answer is the draft');
+  assert.equal(await text.evaluate((node) => document.activeElement === node), true, 'ready to edit');
+  await page.keyboard.press('Enter');
+  await page.locator('.carry-back-entry').waitFor();
+  assert.match((await page.locator('.carry-back-entry-text').textContent()) ?? '', /^Point 1 of the answer to first\?/);
+  assert.deepEqual(consoleErrors, []);
+});

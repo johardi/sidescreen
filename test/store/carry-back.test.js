@@ -95,7 +95,7 @@ test('the API adds, lists, and removes entries for a session, and the turn page 
 
   const page = await (await fetch(new URL(turnHref(sampleTurn()), url))).text();
   assert.match(page, /"carryBack":\[\{"id":/);
-  assert.match(page, /<section class="carry-back" id="carry-back"/);
+  assert.match(page, /<aside class="composer" id="carry-back"/);
 
   const otherSession = await (await fetch(new URL('/api/sessions/session-2/carry-back', url))).json();
   assert.deepEqual(otherSession.entries, []);

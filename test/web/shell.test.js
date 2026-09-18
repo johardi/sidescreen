@@ -84,7 +84,7 @@ function shell(page) {
       sidebar: box('.sidebar'),
       document: box('.document-pane'),
       thread: box('.thread-pane'),
-      carryBack: box('.carry-back'),
+      composer: box('.composer'),
     };
   });
 }
@@ -159,15 +159,13 @@ test('3.1 the shell fits the window: only the panes scroll, and the header, side
   await page.locator('.source-badge').waitFor();
 
   const before = await shell(page);
-  assert.ok(before.header && before.sidebar && before.document && before.thread && before.carryBack);
+  assert.ok(before.header && before.sidebar && before.document && before.thread && before.composer);
   assert.ok(before.pageScrollHeight <= before.viewport.height, `the page itself has nothing to scroll: ${before.pageScrollHeight} vs ${before.viewport.height}`);
   assert.ok(before.pageScrollWidth <= before.viewport.width);
   assert.equal(before.header.y, 0, 'the header is at the top');
-  near(before.carryBack.y + before.carryBack.height, before.viewport.height, 'the carry-back zone ends at the bottom of the window');
   near(before.sidebar.y + before.sidebar.height, before.viewport.height, 'the sidebar runs the full height');
-  assert.ok(before.sidebar.x + before.sidebar.width <= before.carryBack.x, 'beside the carry-back zone, not above it');
-  near(before.carryBack.x, before.document.x, 'the carry-back zone starts where the document does');
-  near(before.carryBack.x + before.carryBack.width, before.thread.x + before.thread.width, 'and ends where the thread pane does');
+  near(before.composer.x + before.composer.width, before.document.x + before.document.width - 16, 'the composer sits 16px from the document pane\'s right edge');
+  near(before.composer.y + before.composer.height, before.document.y + before.document.height - 16, 'and 16px from its bottom');
 
   const scrolled = await page.evaluate(() => {
     const documentPane = /** @type {HTMLElement} */ (document.querySelector('.document-pane'));
@@ -181,7 +179,9 @@ test('3.1 the shell fits the window: only the panes scroll, and the header, side
 
   const after = await shell(page);
   assert.deepEqual(after.header, before.header, 'the header has not moved');
-  assert.deepEqual(after.carryBack, before.carryBack, 'the carry-back zone has not moved');
+  assert.deepEqual(after.composer, before.composer, 'the composer has not moved');
+  const lastLine = await page.evaluate(() => document.getElementById('document')?.getBoundingClientRect().bottom ?? Infinity);
+  assert.ok(after.composer && lastLine <= after.composer.y, `the document's last line clears the composer's bar: ${lastLine} vs ${after.composer?.y}`);
   assert.deepEqual(after.sidebar, before.sidebar, 'the sidebar has not moved');
   assert.deepEqual(after.thread, before.thread, 'the thread pane has not moved');
   assert.equal(after.pageScrollY, 0);
@@ -189,7 +189,7 @@ test('3.1 the shell fits the window: only the panes scroll, and the header, side
   assert.deepEqual(consoleErrors, [], 'no console error, the favicon included');
 });
 
-test('3.2 the carry-back zone caps its height and scrolls its list, with the form still in view', async (t) => {
+test('3.2 the open composer caps its height and scrolls its entries, with the text box still in view', async (t) => {
   const { url } = await startServer(t);
   for (let index = 0; index < 30; index += 1) {
     await fetch(new URL('/api/sessions/session-1/carry-back', url), {
@@ -201,15 +201,17 @@ test('3.2 the carry-back zone caps its height and scrolls its list, with the for
   const { page, consoleErrors } = await openBrowser(t, { width: 1200, height: 800 });
   await page.goto(new URL('/turns/prompt-1', url).href);
   await page.locator('.carry-back-entry').nth(29).waitFor({ state: 'attached' });
+  await page.locator('#composer-bar').click();
 
-  const zone = await page.locator('.carry-back').boundingBox();
-  assert.ok(zone);
-  assert.ok(zone.height <= 800 * 0.4 + 1, `the zone stops at 40% of the window: ${zone.height}`);
+  const pane = await page.locator('.document-pane').boundingBox();
+  const composer = await page.locator('.composer').boundingBox();
+  assert.ok(pane && composer);
+  assert.ok(composer.height <= pane.height * 0.6 + 1, `the composer stops at 60% of the pane: ${composer.height}`);
   const list = await page.locator('.carry-back-list').evaluate((node) => ({ scrollHeight: node.scrollHeight, clientHeight: node.clientHeight }));
-  assert.ok(list.scrollHeight > list.clientHeight + 100, 'the list scrolls inside the zone');
-  for (const selector of ['#carry-back-title', '#carry-back-text', '#carry-back-add']) {
+  assert.ok(list.scrollHeight > list.clientHeight + 100, 'the entries scroll inside it');
+  for (const selector of ['#carry-back-title', '#carry-back-text']) {
     const box = await page.locator(selector).boundingBox();
-    assert.ok(box && box.y >= zone.y && box.y + box.height <= 800 + 1, `${selector} stays in view`);
+    assert.ok(box && box.y >= composer.y && box.y + box.height <= composer.y + composer.height + 1, `${selector} stays in view`);
   }
   const page_ = await shell(page);
   assert.ok(page_.pageScrollHeight <= page_.viewport.height, 'and the page still does not scroll');
@@ -464,7 +466,7 @@ test('3.1 the empty workspace is the same shell with three columns: the sidebar 
   await page.goto(new URL(`/projects/${projectId(stateDir)}`, url).href);
   await page.locator('.workspace-empty').waitFor();
   assert.equal(await page.locator('#thread-handle').count(), 0, 'no thread pane, no handle for it');
-  assert.equal(await page.locator('.carry-back').count(), 0);
+  assert.equal(await page.locator('.composer').count(), 0);
   const state = await shell(page);
   assert.ok(state.pageScrollHeight <= state.viewport.height, 'no page scroll');
   near((state.sidebar?.width ?? 0) + HANDLE + (state.document?.width ?? 0), 1200, 'the sidebar, its handle, and the document fill the window');

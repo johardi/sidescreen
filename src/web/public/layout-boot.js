@@ -39,6 +39,7 @@
       root.style.setProperty('--thread-column', `${Math.max(THREAD_MIN, Math.round(stored.threadWidth))}px`);
     }
     if (stored.theme === 'light' || stored.theme === 'dark') root.setAttribute('data-theme', stored.theme);
+    if (stored.composer === 'minimized' || stored.composer === 'open' || stored.composer === 'maximized') root.setAttribute('data-composer', stored.composer);
   } catch {
     // No storage, or a record this version does not understand: the defaults apply.
   }
