@@ -41,6 +41,8 @@
   --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.16);
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* The face for what an agent wrote, the document and the answers: a text serif the platform ships, never Times. */
+  --serif: Charter, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, Cambria, "Noto Serif", "DejaVu Serif", serif;
 
   /* The shell's column tracks. layout-boot.js and layout.js set these on the root element. */
   --sidebar-column: 260px;
@@ -575,6 +577,7 @@ body[data-resizing] { cursor: col-resize; user-select: none; }
   max-width: 66ch;
   margin: 0 auto;
   overflow-wrap: anywhere;
+  font: 16px/1.6 var(--serif);
 }
 
 .document > :first-child { margin-top: 0; }
@@ -740,9 +743,11 @@ button:disabled { opacity: 0.6; cursor: default; }
   padding: 8px 10px;
   overflow-wrap: anywhere;
 }
+.answer-body { font: 15px/1.6 var(--serif); }
 .answer-body > :first-child { margin-top: 0; }
 .answer-body > :last-child { margin-bottom: 0; }
 .answer-body pre { overflow-x: auto; font: 12px/1.5 var(--mono); }
+.answer-body :not(pre) > code { font: 0.9em var(--mono); }
 .answer-pending { color: var(--fg-muted); font-style: italic; }
 .answer-error { color: var(--danger); }
 .answer-source {

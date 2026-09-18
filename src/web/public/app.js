@@ -48,6 +48,8 @@ const state = {
   pollTimer: null,
   /** What the exchanges list showed at the last render, to tell a new exchange from a re-render of the same ones. */
   shown: /** @type {{ threadId: string|null, exchanges: number }} */ ({ threadId: null, exchanges: 0 }),
+  /** @type {ReturnType<typeof setTimeout>|null} Clears the sent note when its half minute is up. */
+  sentNoteTimer: null,
 };
 
 /** How each backend is named where the user reads it. */
@@ -677,11 +679,33 @@ function focusEdit(field, caret) {
   field.setSelectionRange(at.start, at.end);
 }
 
+/** How long the note about the latest batch sent to the terminal stays on screen. */
+const SENT_NOTE_MS = 30_000;
+
+/**
+ * The note for the moment of sending: how many entries the latest emit
+ * carried, shown for half a minute after it, then gone. Entries emitted
+ * together share one timestamp, which is what makes them a batch.
+ */
+function sentNote() {
+  if (state.sentNoteTimer !== null) {
+    clearTimeout(state.sentNoteTimer);
+    state.sentNoteTimer = null;
+  }
+  const emitted = state.carryBack.filter((entry) => entry.emittedAt !== null);
+  if (emitted.length === 0) return '';
+  const latest = emitted.reduce((newest, entry) => (/** @type {string} */ (entry.emittedAt) > newest ? /** @type {string} */ (entry.emittedAt) : newest), /** @type {string} */ (emitted[0].emittedAt));
+  const age = Date.now() - new Date(latest).getTime();
+  if (age >= SENT_NOTE_MS) return '';
+  state.sentNoteTimer = setTimeout(renderCarryBack, SENT_NOTE_MS - age + 50);
+  const batch = emitted.filter((entry) => entry.emittedAt === latest).length;
+  return `${batch} sent to the terminal`;
+}
+
 function renderCarryBack() {
   const pending = state.carryBack.filter((entry) => entry.emittedAt === null);
-  const sent = state.carryBack.length - pending.length;
   carryBackCount.textContent = pending.length === 0 ? 'nothing pending' : `${pending.length} pending`;
-  carryBackSent.textContent = sent === 0 ? '' : `${sent} sent to the terminal`;
+  carryBackSent.textContent = sentNote();
   const editing = editingEntry();
   carryBackList.replaceChildren();
   // Sent entries have done their job and would only invite a second reading; the count above is their trace.

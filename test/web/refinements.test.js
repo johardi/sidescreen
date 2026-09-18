@@ -8,6 +8,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { dragSelect, openBrowser } from '../browser-helpers.js';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { Writable } from 'node:stream';
+import { emitCarryBack } from '../../src/store/carry-back.js';
 import { sampleTurn, startServer, turnHref, waitForAnswer } from '../server-helpers.js';
 import { formatTime } from '../../src/format.js';
 import { VERSION } from '../../src/version.js';
@@ -627,15 +629,21 @@ test('7.1 on a wide window both reading columns stand clear of their panes\' edg
   assert.ok(Math.abs(left - right) <= 1, 'and is centred');
   const measured = await page.evaluate(() => {
     const articleStyle = getComputedStyle(/** @type {Element} */ (document.getElementById('document')));
-    const exchangesStyle = getComputedStyle(/** @type {Element} */ (document.querySelector('.exchanges')));
-    const articleMax = parseFloat(articleStyle.maxWidth);
-    return { articleMax, ch: articleMax / 66, paddingLeft: parseFloat(exchangesStyle.paddingLeft), paddingRight: parseFloat(exchangesStyle.paddingRight) };
+    const exchangesElement = /** @type {HTMLElement} */ (document.querySelector('.exchanges'));
+    const exchangesStyle = getComputedStyle(exchangesElement);
+    // The two regions use different faces, so measure the thread column's own character unit in place.
+    const probe = document.createElement('span');
+    probe.style.cssText = 'position: absolute; visibility: hidden; width: 72ch;';
+    exchangesElement.append(probe);
+    const threadColumn = probe.getBoundingClientRect().width;
+    probe.remove();
+    return { articleMax: parseFloat(articleStyle.maxWidth), threadColumn, paddingLeft: parseFloat(exchangesStyle.paddingLeft), paddingRight: parseFloat(exchangesStyle.paddingRight) };
   });
   assert.ok(article.width <= measured.articleMax + 1, `the article is no wider than its 66ch column: ${article.width} vs ${measured.articleMax}`);
   const thread = await box(page, '.thread-pane');
   const exchanges = measured;
   assert.ok(exchanges.paddingLeft >= 40 && Math.abs(exchanges.paddingLeft - exchanges.paddingRight) <= 1, 'the thread column is centred with at least 40px at each side');
-  assert.ok(thread.width - exchanges.paddingLeft - exchanges.paddingRight <= 72 * measured.ch + 1, 'and no wider than its 72ch column');
+  assert.ok(thread.width - exchanges.paddingLeft - exchanges.paddingRight <= measured.threadColumn + 1, 'and no wider than its 72ch column');
   assert.ok(exchanges.paddingLeft > 40, `at this width the column, not the 40px minimum, sets the margin: ${exchanges.paddingLeft}px`);
   assert.deepEqual(consoleErrors, []);
 });
@@ -675,5 +683,76 @@ test('7.6 the ask popover has no buttons: Enter asks, Escape closes', async (t) 
   await page.locator('.thread .question').waitFor();
   assert.equal(await page.locator('.thread .question').textContent(), 'why quick?');
   await popover.waitFor({ state: 'hidden' });
+  assert.deepEqual(consoleErrors, []);
+});
+
+// ---- 8. Third review -------------------------------------------------------------------
+
+/** A writable that discards what the hook would print. */
+const discard = () => new Writable({ write(_chunk, _encoding, callback) { callback(); } });
+
+test('8.1 the sent note names the latest batch for half a minute, not a running total', async (t) => {
+  const { url, store } = await startServer(t);
+  const json = { 'Content-Type': 'application/json' };
+  const add = (/** @type {string} */ text) => fetch(new URL('/api/sessions/session-1/carry-back', url), { method: 'POST', headers: json, body: JSON.stringify({ text }) });
+  await add('First.');
+  await add('Second.');
+  const { page, consoleErrors } = await openBrowser(t, { width: 1200, height: 800 });
+  await page.goto(new URL('/turns/prompt-1', url).href);
+  await page.locator('#composer-bar').click();
+  assert.equal(await page.locator('#carry-back-sent').textContent(), '', 'nothing sent yet');
+
+  await emitCarryBack({ store, sessionId: 'session-1', stdout: discard() });
+  await page.locator('.carry-back-entry').first().waitFor({ state: 'detached', timeout: 5_000 });
+  assert.equal(await page.locator('#carry-back-sent').textContent(), '2 sent to the terminal');
+
+  await add('Third.');
+  await page.locator('.carry-back-entry').waitFor();
+  await emitCarryBack({ store, sessionId: 'session-1', stdout: discard(), now: new Date(Date.now() + 1_000) });
+  await page.locator('.carry-back-entry').waitFor({ state: 'detached', timeout: 5_000 });
+  assert.equal(await page.locator('#carry-back-sent').textContent(), '1 sent to the terminal', 'the latest batch, not three');
+
+  await page.reload();
+  assert.equal(await page.locator('#carry-back-sent').textContent(), '1 sent to the terminal', 'still within the window after a reload');
+
+  await store.update((state) => {
+    for (const entry of state.carryBack['session-1']) entry.emittedAt = new Date(Date.now() - 40_000).toISOString();
+  });
+  await page.reload();
+  assert.equal(await page.locator('#carry-back-sent').textContent(), '', 'gone once the half minute has passed');
+  assert.deepEqual(consoleErrors, []);
+});
+
+test('8.2 the document and the answers read in a serif face; everything else keeps the interface face', async (t) => {
+  const { url } = await startServer(t, { dispatch: threadStub });
+  await seedAnsweredThread(url);
+  const { page, consoleErrors } = await openBrowser(t, { width: 1200, height: 800 });
+  await page.goto(new URL('/turns/prompt-1', url).href);
+  await page.locator('.source-badge').waitFor();
+  await page.locator('#composer-bar').click();
+  await dragSelect(page, 'brown fox');
+  await page.locator('#ask-popover').waitFor({ state: 'visible' });
+
+  const faces = await page.evaluate(() =>
+    Object.fromEntries(
+      ['#document', '#document p', '.answer-body', '.answer-body p', '.question', '.follow-up-question', '#ask-question', '#carry-back-text', '.answer-source', '.source-badge', '.thread-selection', '.carry-back-title'].map((selector) => {
+        const element = document.querySelector(selector);
+        return [selector, element ? getComputedStyle(element).fontFamily : 'missing'];
+      }),
+    ),
+  );
+  for (const selector of ['#document', '#document p', '.answer-body', '.answer-body p']) {
+    assert.match(faces[selector], /^Charter, "Iowan Old Style"/, `${selector} is set in the serif stack`);
+    assert.doesNotMatch(faces[selector], /Times/, `${selector} never names Times`);
+  }
+  for (const selector of ['.question', '.follow-up-question', '#ask-question', '#carry-back-text', '.answer-source', '.source-badge', '.thread-selection', '.carry-back-title']) {
+    assert.match(faces[selector], /^-apple-system/, `${selector} keeps the interface face`);
+  }
+  const sizes = await page.evaluate(() => ({
+    document: getComputedStyle(/** @type {Element} */ (document.querySelector('#document p'))).fontSize,
+    answer: getComputedStyle(/** @type {Element} */ (document.querySelector('.answer-body p'))).fontSize,
+  }));
+  assert.equal(sizes.document, '16px');
+  assert.equal(sizes.answer, '15px');
   assert.deepEqual(consoleErrors, []);
 });
