@@ -178,9 +178,9 @@ Showing the thumb only while the pointer is over the region is what "hidden when
 
 ### Margins
 
-The document pane's side padding grows from 16px to 64px, and its article narrows from a 76ch to a 62ch centred column, so on a wide pane the text sits well clear of either edge.
-The thread pane's top block, exchanges, and field share a centred 72ch column with at least 60px at each side, applied as padding on each part so the rule between them still runs the pane's full width.
-The second review set the widths from a screenshot at 1871px wide, where the document's text measured 66 characters and the thread's 72, each about 80px from its pane's edges; the third review, reading the result, narrowed the document to 62 characters and raised the thread's minimum margin to 60px by hand.
+The document pane's side padding grows from 16px to 64px, and its article narrows from a 76ch to a 66ch centred column, so on a wide pane the text sits well clear of either edge.
+The thread pane's top block and exchanges share a centred 72ch column with at least 60px at each side, applied as padding on each part so the rule between them still runs the pane's full width; the follow-up field sits on the same column but may come within 20px of the pane's edges, so the box reads wider than the text above it, and the empty state's one line is centred in the pane.
+The second review set the widths from a screenshot at 1871px wide, where the document's text measured 66 characters and the thread's 72, each about 80px from its pane's edges; later reviews tuned the thread's minimum margin to 60px and the field's to 20px by hand.
 
 ### Tokens added
 
