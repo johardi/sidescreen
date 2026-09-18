@@ -574,7 +574,7 @@ body[data-resizing] { cursor: col-resize; user-select: none; }
 /* The document: the rendered turn, with base typography only */
 
 .document {
-  max-width: 66ch;
+  max-width: 62ch;
   margin: 0 auto;
   overflow-wrap: anywhere;
   font: 16px/1.6 var(--serif);
@@ -676,20 +676,20 @@ button:disabled { opacity: 0.6; cursor: default; }
 
 /* Thread column: chips, passage, and tabs fixed at the top, the exchanges scrolling, the field fixed at the foot */
 
-.thread-empty { color: var(--fg-muted); margin: 0; padding: 16px 40px; }
+.thread-empty { color: var(--fg-muted); margin: 0; padding: 16px 60px; }
 .thread {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
-/* The thread pane's parts share one centred column of 72ch, with at least 40px at each side */
+/* The thread pane's parts share one centred column of 72ch, with at least 60px at each side */
 .thread-top {
   flex: none;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 16px max(40px, calc((100% - 72ch) / 2)) 12px;
+  padding: 16px max(60px, calc((100% - 72ch) / 2)) 12px;
 }
 .thread-list {
   list-style: none;
@@ -724,7 +724,7 @@ button:disabled { opacity: 0.6; cursor: default; }
   overflow-y: auto;
   list-style: none;
   margin: 0;
-  padding: 4px max(40px, calc((100% - 72ch) / 2)) 12px;
+  padding: 4px max(60px, calc((100% - 72ch) / 2)) 12px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -743,7 +743,7 @@ button:disabled { opacity: 0.6; cursor: default; }
   padding: 8px 10px;
   overflow-wrap: anywhere;
 }
-.answer-body { font: 15px/1.6 var(--serif); }
+.answer-body { font: 16px/1.6 var(--serif); }
 .answer-body > :first-child { margin-top: 0; }
 .answer-body > :last-child { margin-bottom: 0; }
 .answer-body pre { overflow-x: auto; font: 12px/1.5 var(--mono); }
@@ -836,7 +836,7 @@ button:disabled { opacity: 0.6; cursor: default; }
 
 .follow-up-form {
   flex: none;
-  padding: 10px max(40px, calc((100% - 72ch) / 2)) 14px;
+  padding: 10px max(60px, calc((100% - 72ch) / 2)) 14px;
   border-top: 1px solid var(--line);
 }
 .branch-form { display: flex; flex-direction: column; gap: 6px; }

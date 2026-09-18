@@ -102,8 +102,8 @@ test('2.2 scrollbars are thin and show their thumb on hover only, and the panes 
   }
   assert.equal(styles[1].paddingLeft, '64px');
   assert.equal(styles[1].paddingRight, '64px');
-  assert.equal(styles[2].paddingLeft, '40px');
-  assert.equal(styles[2].paddingRight, '40px');
+  assert.equal(styles[2].paddingLeft, '60px');
+  assert.equal(styles[2].paddingRight, '60px');
 
   await page.locator('.document-pane').hover({ position: { x: 20, y: 200 } });
   const hovered = await page.evaluate(() => getComputedStyle(/** @type {Element} */ (document.querySelector('.document-pane'))).scrollbarColor);
@@ -639,12 +639,12 @@ test('7.1 on a wide window both reading columns stand clear of their panes\' edg
     probe.remove();
     return { articleMax: parseFloat(articleStyle.maxWidth), threadColumn, paddingLeft: parseFloat(exchangesStyle.paddingLeft), paddingRight: parseFloat(exchangesStyle.paddingRight) };
   });
-  assert.ok(article.width <= measured.articleMax + 1, `the article is no wider than its 66ch column: ${article.width} vs ${measured.articleMax}`);
+  assert.ok(article.width <= measured.articleMax + 1, `the article is no wider than its 62ch column: ${article.width} vs ${measured.articleMax}`);
   const thread = await box(page, '.thread-pane');
   const exchanges = measured;
-  assert.ok(exchanges.paddingLeft >= 40 && Math.abs(exchanges.paddingLeft - exchanges.paddingRight) <= 1, 'the thread column is centred with at least 40px at each side');
+  assert.ok(exchanges.paddingLeft >= 60 && Math.abs(exchanges.paddingLeft - exchanges.paddingRight) <= 1, 'the thread column is centred with at least 60px at each side');
   assert.ok(thread.width - exchanges.paddingLeft - exchanges.paddingRight <= measured.threadColumn + 1, 'and no wider than its 72ch column');
-  assert.ok(exchanges.paddingLeft > 40, `at this width the column, not the 40px minimum, sets the margin: ${exchanges.paddingLeft}px`);
+  assert.ok(exchanges.paddingLeft >= 60, `the margin is never under its 60px minimum: ${exchanges.paddingLeft}px`);
   assert.deepEqual(consoleErrors, []);
 });
 
@@ -753,6 +753,6 @@ test('8.2 the document and the answers read in a serif face; everything else kee
     answer: getComputedStyle(/** @type {Element} */ (document.querySelector('.answer-body p'))).fontSize,
   }));
   assert.equal(sizes.document, '16px');
-  assert.equal(sizes.answer, '15px');
+  assert.equal(sizes.answer, '16px');
   assert.deepEqual(consoleErrors, []);
 });
