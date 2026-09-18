@@ -26,7 +26,7 @@ The documentation SHALL present a global install followed by `sidescreen init` a
 
 ### Requirement: The installed copy is self-sufficient
 
-The published package SHALL contain everything `init` and `serve` need: the executable, the server and its browser assets, and the shipped skill.
+The published package SHALL contain everything `init`, `start`, and `serve` need: the executable, the server and its browser assets, the shipped skill, and, for macOS, the menu bar item's script.
 The published package SHALL NOT contain tests, test fixtures, planning artifacts, or editor and agent configuration.
 
 #### Scenario: Setting up a project from an installed copy
@@ -38,7 +38,7 @@ The published package SHALL NOT contain tests, test fixtures, planning artifacts
 #### Scenario: Inspecting the package contents
 
 - **WHEN** the package tarball is listed before publishing
-- **THEN** it contains the executable, the source and browser assets, the skill, the manifest, the README, and the license
+- **THEN** it contains the executable, the source and browser assets, the skill, the macOS menu bar item's script, the manifest, the README, and the license
 - **AND** it contains no file from the test or planning directories
 
 ### Requirement: The tool reports the package version
