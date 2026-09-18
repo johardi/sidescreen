@@ -7,7 +7,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openBrowser } from '../browser-helpers.js';
-import { sampleTurn, startServer, turnHref } from '../server-helpers.js';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { sampleTurn, startServer, turnHref, waitForAnswer } from '../server-helpers.js';
 import { formatTime } from '../../src/format.js';
 import { VERSION } from '../../src/version.js';
 import { projectId } from '../../src/store/projects.js';
@@ -79,10 +80,16 @@ test('2.1 every colour token has a plain fallback declared right before its ligh
 
 test('2.2 scrollbars are thin and show their thumb on hover only, and the panes have their margins', async (t) => {
   const { url } = await startServer(t, { turns: [sampleTurn({ message: Array.from({ length: 80 }, (_, i) => `Paragraph ${i + 1}.`).join('\n\n') })] });
+  await fetch(new URL('/api/turns/prompt-1/threads', url), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ anchor: { start: { path: [0], offset: 0 }, end: { path: [0], offset: 9 }, text: 'Paragraph' }, selectedText: 'Paragraph', question: 'q' }),
+  });
   const { page, consoleErrors } = await openBrowser(t, { width: 1200, height: 800 });
   await page.goto(new URL('/turns/prompt-1', url).href);
+  await page.locator('.exchanges').waitFor();
   const styles = await page.evaluate(() =>
-    ['.sidebar-scroll', '.document-pane', '.thread-pane'].map((selector) => {
+    ['.sidebar-scroll', '.document-pane', '.exchanges'].map((selector) => {
       const style = getComputedStyle(/** @type {Element} */ (document.querySelector(selector)));
       return { selector, scrollbarWidth: style.scrollbarWidth, scrollbarColor: style.scrollbarColor, paddingLeft: style.paddingLeft, paddingRight: style.paddingRight };
     }),
@@ -305,5 +312,136 @@ test('3.5 the session menu follows a session or removes it in two activations, w
   assert.equal(await page.locator('.project-name', { hasText: 'proj' }).count(), 0, 'the project is no longer listed');
   state = await store.read();
   assert.equal(Object.keys(state.sessions).length, 0);
+  assert.deepEqual(consoleErrors, []);
+});
+
+// ---- 4. Thread pane -------------------------------------------------------------------
+
+/** Answers at length, and slowly when asked to. */
+/** @type {import('../../src/web/server.js').Dispatch} */
+const threadStub = async ({ exchange }) => {
+  if (exchange.question.startsWith('slow')) await sleep(1_200);
+  return {
+    ok: true,
+    answer: { text: Array.from({ length: 40 }, (_, index) => `Point ${index + 1} of the answer to ${exchange.question}`).join('\n\n'), source: 'code', sourceDetail: 'src/x.js:1' },
+    subAgentSessionId: 'sub-1',
+  };
+};
+
+/** @param {string} url */
+async function seedAnsweredThread(url) {
+  const response = await fetch(new URL('/api/turns/prompt-1/threads', url), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ anchor: { start: { path: [0], offset: 4 }, end: { path: [0], offset: 9 }, text: 'quick' }, selectedText: 'quick', question: 'first?' }),
+  });
+  const { thread } = await response.json();
+  return waitForAnswer(url, thread.id);
+}
+
+/** @param {import('playwright').Page} page @param {string} selector */
+const box = async (page, selector) => {
+  const rect = await page.locator(selector).boundingBox();
+  assert.ok(rect, `${selector} is on screen`);
+  return rect;
+};
+
+test('4.1 the thread pane pins its top and its field, scrolls the exchanges to the newest, and leaves the position alone on a poll', async (t) => {
+  const { url } = await startServer(t, { dispatch: threadStub });
+  await seedAnsweredThread(url);
+  const { page, consoleErrors } = await openBrowser(t, { width: 1200, height: 800 });
+  await page.goto(new URL('/turns/prompt-1', url).href);
+  await page.locator('.source-badge').waitFor();
+
+  const pane = await box(page, '.thread-pane');
+  const top = await box(page, '.thread-top');
+  const form = await box(page, '.follow-up-form');
+  assert.ok(Math.abs(top.y - pane.y) <= 1, 'the chips and passage sit at the top of the pane');
+  assert.ok(Math.abs(form.y + form.height - (pane.y + pane.height)) <= 1, 'the field sits at the foot of the pane');
+  // The list is re-rendered on every event, so read it fresh inside one script rather than through a locator that may hold a replaced node.
+  const exchanges = {
+    /** @param {(node: HTMLElement) => unknown} read */
+    evaluate: (read) => page.evaluate((source) => new Function('node', `return (${source})(node);`)(document.querySelector('.exchanges')), read.toString()),
+  };
+  const size = /** @type {{ scrollHeight: number, clientHeight: number }} */ (await exchanges.evaluate((node) => ({ scrollHeight: node.scrollHeight, clientHeight: node.clientHeight })));
+  assert.ok(size.scrollHeight > size.clientHeight + 100, 'the exchanges have room to scroll between them');
+  assert.ok(top.y + top.height <= (await box(page, '.exchanges')).y + 1, 'and scroll below the top block');
+
+  await page.locator('.follow-up-question').fill('slow second?');
+  await page.keyboard.press('Enter');
+  await page.locator('.exchange').nth(1).waitFor();
+  const gap = /** @type {number} */ (await exchanges.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop));
+  assert.ok(gap <= 2, `a sent follow-up scrolls into view: ${gap}px from the end`);
+  assert.deepEqual(await box(page, '.thread-top'), top, 'the top block has not moved');
+  assert.deepEqual(await box(page, '.follow-up-form'), form, 'nor has the field');
+
+  await exchanges.evaluate((node) => {
+    node.scrollTop = 40;
+  });
+  await page.locator('.exchange').nth(1).locator('.source-badge').waitFor({ timeout: 5_000 });
+  assert.equal(await exchanges.evaluate((node) => node.scrollTop), 40, 'the answer arriving re-renders the same exchanges and leaves the reader where they were');
+  assert.deepEqual(consoleErrors, []);
+});
+
+test('4.2 Enter sends a follow-up and a branch, Shift+Enter breaks a line, Escape closes the branch field, and no button remains', async (t) => {
+  const { url } = await startServer(t, { dispatch: threadStub });
+  await seedAnsweredThread(url);
+  const { page, consoleErrors } = await openBrowser(t, { width: 1200, height: 800 });
+  await page.goto(new URL('/turns/prompt-1', url).href);
+  await page.locator('.source-badge').waitFor();
+
+  assert.equal(await page.locator('.follow-up-form button').count(), 0, 'no follow-up button');
+  const field = page.locator('.follow-up-question');
+  assert.match((await field.getAttribute('placeholder')) ?? '', /Enter sends/);
+  await field.fill('line one');
+  await page.keyboard.press('Shift+Enter');
+  assert.equal(await field.inputValue(), 'line one\n', 'Shift+Enter breaks a line');
+  assert.equal(await page.locator('.exchange').count(), 1, 'and sends nothing');
+  await page.keyboard.press('Enter');
+  await page.locator('.exchange').nth(1).locator('.source-badge').waitFor({ timeout: 5_000 });
+  assert.equal(await page.locator('.exchange').nth(1).locator('.question').textContent(), 'line one');
+
+  await page.locator('.branch-button').first().click();
+  const branchForm = page.locator('.branch-form');
+  await branchForm.waitFor();
+  assert.equal(await branchForm.locator('button').count(), 0, 'no branch buttons');
+  assert.match((await branchForm.locator('.branch-question').getAttribute('placeholder')) ?? '', /Enter sends, Esc cancels/);
+  assert.equal(await branchForm.locator('.branch-question').evaluate((node) => document.activeElement === node), true, 'the field takes focus');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('.branch-form').count(), 0, 'Escape closes it');
+  assert.equal(await page.locator('.branch-tab').count(), 0, 'and nothing was sent');
+
+  await page.locator('.branch-button').first().click();
+  await page.locator('.branch-question').fill('sideways?');
+  await page.keyboard.press('Enter');
+  await page.locator('.branch-tab').nth(1).waitFor();
+  assert.deepEqual(await page.locator('.branch-tab').allTextContents(), ['main', 'b1']);
+  assert.equal(await page.locator('.thread .question').first().textContent(), 'sideways?');
+  assert.deepEqual(consoleErrors, []);
+});
+
+test('4.3 the actions under an answer are two icon controls at the left, named by their tooltips', async (t) => {
+  const { url } = await startServer(t, { dispatch: threadStub });
+  await seedAnsweredThread(url);
+  const { page, consoleErrors } = await openBrowser(t, { width: 1200, height: 800 });
+  await page.goto(new URL('/turns/prompt-1', url).href);
+  await page.locator('.source-badge').waitFor();
+
+  const actions = page.locator('.exchange-actions').first();
+  assert.equal(await actions.evaluate((node) => getComputedStyle(node).justifyContent), 'flex-start');
+  const carry = actions.locator('.carry-button');
+  const branch = actions.locator('.branch-button');
+  assert.equal(await carry.getAttribute('title'), 'Carry back this answer');
+  assert.equal(await carry.getAttribute('aria-label'), 'Carry back this answer');
+  assert.equal(await carry.locator('use').getAttribute('href'), '#icon-reply');
+  assert.equal(await branch.getAttribute('title'), 'Branch from here');
+  assert.equal(await branch.getAttribute('aria-label'), 'Branch from here');
+  assert.equal(await branch.locator('use').getAttribute('href'), '#icon-code-branch');
+  assert.equal(((await carry.textContent()) ?? '').trim(), '', 'no text, the tooltip names it');
+  const answer = await box(page, '.answer');
+  const carryBox = await box(page, '.exchange-actions .carry-button');
+  const branchBox = await box(page, '.exchange-actions .branch-button');
+  assert.ok(Math.abs(carryBox.x - answer.x) <= 2, `carry back sits at the answer's left edge: ${carryBox.x} vs ${answer.x}`);
+  assert.ok(branchBox.x > carryBox.x && branchBox.x < answer.x + answer.width / 2, 'branch from here sits right after it');
   assert.deepEqual(consoleErrors, []);
 });

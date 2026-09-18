@@ -46,6 +46,8 @@ const state = {
   branchingFrom: null,
   /** @type {ReturnType<typeof setTimeout>|null} */
   pollTimer: null,
+  /** What the exchanges list showed at the last render, to tell a new exchange from a re-render of the same ones. */
+  shown: /** @type {{ threadId: string|null, exchanges: number }} */ ({ threadId: null, exchanges: 0 }),
 };
 
 /** How each backend is named where the user reads it. */
@@ -213,12 +215,46 @@ documentElement.addEventListener('click', (event) => {
   render();
 });
 
+/**
+ * What the reader has typed into a field, and whether they are in it, so a
+ * re-render of the thread pane on an event hands it back rather than losing it.
+ *
+ * @param {HTMLTextAreaElement|null} field
+ */
+function draftOf(field) {
+  if (!field) return null;
+  return { value: field.value, focused: document.activeElement === field, start: field.selectionStart, end: field.selectionEnd };
+}
+
+/**
+ * @param {HTMLTextAreaElement|null} field
+ * @param {ReturnType<typeof draftOf>} draft
+ * @param {{ focusWhenNew?: boolean }} [options] Focus a field that did not exist before the render, such as a branch field just opened.
+ */
+function restoreDraft(field, draft, { focusWhenNew = false } = {}) {
+  if (!field) return;
+  if (draft && !field.disabled) {
+    field.value = draft.value;
+    if (draft.focused) {
+      field.focus({ preventScroll: true });
+      field.setSelectionRange(draft.start, draft.end);
+    }
+  } else if (!draft && focusWhenNew) {
+    field.focus();
+  }
+}
+
 function renderThreadPane() {
+  const previous = threadPane.querySelector('.exchanges');
+  const previousScroll = previous ? previous.scrollTop : 0;
+  const followUpDraft = draftOf(threadPane.querySelector('.follow-up-question'));
+  const branchDraft = draftOf(threadPane.querySelector('.branch-question'));
   threadPane.replaceChildren();
   const roots = rootThreads(state.threads);
   const active = activeThread();
   if (roots.length === 0 || active === null) {
     threadPane.append(element('p', { class: 'thread-empty' }, 'Select text in the document to ask about it.'));
+    state.shown = { threadId: null, exchanges: 0 };
     return;
   }
   state.activeThreadId = active.id;
@@ -239,57 +275,87 @@ function renderThreadPane() {
     item.append(chip);
     list.append(item);
   });
-  threadPane.append(list, renderThread(active, root, roots.indexOf(root) + 1));
+  const section = renderThread(active, root, roots.indexOf(root) + 1, list);
+  threadPane.append(section);
+
+  // A new exchange, or another thread, scrolls to the newest; a re-render of the same exchanges stays where the reader was.
+  const exchanges = /** @type {HTMLElement} */ (section.querySelector('.exchanges'));
+  const grew = state.shown.threadId !== active.id || active.exchanges.length > state.shown.exchanges;
+  exchanges.scrollTop = grew ? exchanges.scrollHeight : previousScroll;
+  state.shown = { threadId: active.id, exchanges: active.exchanges.length };
+
+  // Whatever was being typed comes back, in the same field, with the caret where it was; a branch field just opened takes focus.
+  restoreDraft(section.querySelector('.follow-up-question'), followUpDraft);
+  restoreDraft(section.querySelector('.branch-question'), branchDraft, { focusWhenNew: true });
 }
 
 /**
+ * The thread as a column: chips, header, and tabs fixed at the top, the
+ * exchanges scrolling in the middle, the follow-up field fixed at the foot.
+ *
  * @param {PresentedThread} thread The thread being shown, possibly a branch.
  * @param {PresentedThread} root The root of its family.
  * @param {number} index 1-based position of the root among the turn's threads.
+ * @param {HTMLElement} chips The list of the turn's threads.
  */
-function renderThread(thread, root, index) {
+function renderThread(thread, root, index, chips) {
+  const top = element('div', { class: 'thread-top' });
+  top.append(chips);
   const header = element('header', { class: 'thread-header' });
   header.append(element('span', { class: 'thread-index' }, `Thread #${index}`));
   header.append(element('blockquote', { class: 'thread-selection' }, root.selectedText));
   if (root.detached) {
     header.append(element('p', { class: 'thread-detached' }, 'The document changed since this was anchored; the highlight may be off.'));
   }
-
-  const section = element('section', { class: 'thread', 'data-thread-id': thread.id });
-  section.append(header);
+  top.append(header);
 
   const family = familyOf(state.threads, root);
-  if (family.length > 1) section.append(renderBranchTabs(family, thread));
-  if (thread.parentThreadId !== null) section.append(element('p', { class: 'thread-lineage' }, lineageText(thread)));
+  if (family.length > 1) top.append(renderBranchTabs(family, thread));
+  if (thread.parentThreadId !== null) top.append(element('p', { class: 'thread-lineage' }, lineageText(thread)));
 
   const exchanges = element('ol', { class: 'exchanges' });
-  thread.exchanges.forEach((exchange, position) => {
+  for (const exchange of thread.exchanges) {
     const item = element('li', { class: 'exchange', 'data-exchange-id': exchange.id });
     item.append(element('div', { class: 'question' }, exchange.question));
     item.append(renderAnswer(exchange));
     if (exchange.status === 'answered' && exchange.subAgentSessionId) {
       const actions = element('div', { class: 'exchange-actions' });
-      const carryButton = element('button', { type: 'button', class: 'carry-button', title: 'Draft a carry-back entry from this answer' }, 'Carry back');
+      const carryButton = iconButton('carry-button', 'reply', 'Carry back this answer');
       carryButton.addEventListener('click', () => {
         if (carryBackText.value.trim() === '') carryBackText.value = answerPlainText(exchange);
         carryBackText.dataset.threadId = thread.id;
         carryBackSection.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         carryBackText.focus({ preventScroll: true });
       });
-      actions.append(carryButton);
-      const branchButton = element('button', { type: 'button', class: 'branch-button', title: `Start a new line of questioning from answer ${position + 1}` }, 'Branch from here');
+      const branchButton = iconButton('branch-button', 'code-branch', 'Branch from here');
       branchButton.addEventListener('click', () => {
         state.branchingFrom = state.branchingFrom === exchange.id ? null : exchange.id;
         render();
       });
-      actions.append(branchButton);
+      actions.append(carryButton, branchButton);
       item.append(actions);
       if (state.branchingFrom === exchange.id) item.append(renderBranchForm(thread, exchange));
     }
     exchanges.append(item);
-  });
-  section.append(exchanges, renderFollowUpForm(thread));
+  }
+
+  const section = element('section', { class: 'thread', 'data-thread-id': thread.id });
+  section.append(top, exchanges, renderFollowUpForm(thread));
   return section;
+}
+
+/**
+ * A compact control showing one of the page's icons, named by its tooltip
+ * and its accessible label.
+ *
+ * @param {string} className
+ * @param {string} iconName A symbol in the page's sprite.
+ * @param {string} label
+ */
+function iconButton(className, iconName, label) {
+  const button = element('button', { type: 'button', class: `icon-button ${className}`, title: label, 'aria-label': label });
+  button.innerHTML = `<svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-${iconName}"></use></svg>`;
+  return button;
 }
 
 /**
@@ -385,7 +451,12 @@ function pendingText(exchange) {
   return `Asking ${backendLabel(exchange.backend)}… ${elapsedSince(exchange.askedAt)}`;
 }
 
-/** @param {PresentedThread} thread */
+/**
+ * The follow-up field at the foot of the thread pane. Enter sends, Shift+Enter
+ * breaks a line; there is no button.
+ *
+ * @param {PresentedThread} thread
+ */
 function renderFollowUpForm(thread) {
   const last = thread.exchanges[thread.exchanges.length - 1];
   const waiting = last !== undefined && last.status === 'pending';
@@ -393,53 +464,61 @@ function renderFollowUpForm(thread) {
   const input = element('textarea', {
     class: 'follow-up-question',
     rows: '2',
-    'aria-label': 'Follow-up question',
-    placeholder: waiting ? 'Waiting for the current answer…' : 'Ask a follow-up… (@claude or @codex to switch)',
+    'aria-label': 'Follow-up question. Enter sends, Shift+Enter breaks a line',
+    placeholder: waiting ? 'Waiting for the current answer…' : 'Ask a follow-up… Enter sends (@claude or @codex to switch)',
   });
-  const button = element('button', { type: 'submit', class: 'button-primary follow-up-button' }, 'Follow up');
   input.disabled = waiting;
-  button.disabled = waiting;
   input.addEventListener('keydown', submitOnEnter(form));
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const question = input.value.trim();
     if (question === '') return;
-    button.disabled = true;
+    input.disabled = true;
     try {
       const { thread: updated } = /** @type {{ thread: PresentedThread }} */ (await postJson(`/api/threads/${encodeURIComponent(thread.id)}/exchanges`, { question }));
       mergeThread(updated);
+      input.value = '';
       render();
       schedulePoll();
     } catch (error) {
       showFormError(form, /** @type {Error} */ (error));
-      button.disabled = false;
+      input.disabled = false;
     }
   });
-  const actions = element('div', { class: 'form-actions' });
-  actions.append(button);
-  form.append(input, actions);
+  form.append(input);
   return form;
 }
 
 /**
+ * The field for a new branch, under the answer it branches from. Enter sends,
+ * Escape closes it.
+ *
  * @param {PresentedThread} thread
  * @param {PresentedExchange} exchange
  */
 function renderBranchForm(thread, exchange) {
   const form = element('form', { class: 'branch-form' });
-  const input = element('textarea', { class: 'branch-question', rows: '2', 'aria-label': 'Question for the new branch', placeholder: 'Ask on a new branch…' });
-  const cancel = element('button', { type: 'button', class: 'button-secondary' }, 'Cancel');
-  const button = element('button', { type: 'submit', class: 'button-primary branch-submit' }, 'Ask on a branch');
-  cancel.addEventListener('click', () => {
-    state.branchingFrom = null;
-    render();
+  const input = element('textarea', {
+    class: 'branch-question',
+    rows: '2',
+    'aria-label': 'Question for the new branch. Enter sends, Escape cancels',
+    placeholder: 'Ask on a new branch… Enter sends, Esc cancels',
   });
-  input.addEventListener('keydown', submitOnEnter(form));
+  const submit = submitOnEnter(form);
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      state.branchingFrom = null;
+      render();
+      return;
+    }
+    submit(event);
+  });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const question = input.value.trim();
     if (question === '') return;
-    button.disabled = true;
+    input.disabled = true;
     try {
       const { thread: branch } = /** @type {{ thread: PresentedThread }} */ (
         await postJson(`/api/threads/${encodeURIComponent(thread.id)}/branches`, { exchangeId: exchange.id, question })
@@ -451,13 +530,10 @@ function renderBranchForm(thread, exchange) {
       schedulePoll();
     } catch (error) {
       showFormError(form, /** @type {Error} */ (error));
-      button.disabled = false;
+      input.disabled = false;
     }
   });
-  const actions = element('div', { class: 'form-actions' });
-  actions.append(cancel, button);
-  form.append(input, actions);
-  setTimeout(() => input.focus({ preventScroll: true }), 0);
+  form.append(input);
   return form;
 }
 

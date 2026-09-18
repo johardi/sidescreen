@@ -252,7 +252,7 @@ test('branching from an answer opens a sibling tab with its own question, and th
 
   await page.locator('.branch-button').first().click();
   await page.locator('.branch-question').fill('sideways?');
-  await page.locator('.branch-submit').click();
+  await page.keyboard.press('Enter');
 
   const tabs = page.locator('.branch-tab');
   await tabs.nth(1).waitFor();
@@ -338,7 +338,7 @@ test('5.1 each answer opens with a quiet line naming its backend, the model in i
   assert.ok(labelBox && bodyBox && badgeBox && labelBox.y + labelBox.height <= bodyBox.y + 1, 'the label sits above the answer body');
   assert.ok(labelBox && badgeBox && labelBox.height < badgeBox.height * 1.6, 'and is no louder than the source badge');
   assert.equal(await labels.nth(0).evaluate((node) => getComputedStyle(node).backgroundColor), 'rgba(0, 0, 0, 0)', 'no fill colour');
-  assert.equal(await page.locator('.follow-up-question').getAttribute('placeholder'), 'Ask a follow-up… (@claude or @codex to switch)');
+  assert.equal(await page.locator('.follow-up-question').getAttribute('placeholder'), 'Ask a follow-up… Enter sends (@claude or @codex to switch)');
 
   await page.locator('.follow-up-question').fill('slow third?');
   await page.keyboard.press('Enter');

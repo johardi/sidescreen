@@ -171,13 +171,13 @@ test('3.1 the shell fits the window: only the panes scroll, and the header, side
 
   const scrolled = await page.evaluate(() => {
     const documentPane = /** @type {HTMLElement} */ (document.querySelector('.document-pane'));
-    const threadPane = /** @type {HTMLElement} */ (document.querySelector('.thread-pane'));
+    const exchanges = /** @type {HTMLElement} */ (document.querySelector('.exchanges'));
     documentPane.scrollTop = documentPane.scrollHeight;
-    threadPane.scrollTop = threadPane.scrollHeight;
-    return { document: documentPane.scrollTop, thread: threadPane.scrollTop };
+    exchanges.scrollTop = exchanges.scrollHeight;
+    return { document: documentPane.scrollTop, thread: exchanges.scrollTop };
   });
   assert.ok(scrolled.document > 400, `the document pane scrolled on its own: ${scrolled.document}`);
-  assert.ok(scrolled.thread > 100, `the thread pane scrolled on its own: ${scrolled.thread}`);
+  assert.ok(scrolled.thread > 100, `the exchanges scrolled on their own: ${scrolled.thread}`);
 
   const after = await shell(page);
   assert.deepEqual(after.header, before.header, 'the header has not moved');

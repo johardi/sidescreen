@@ -192,8 +192,9 @@ async function refreshSidebar() {
   latestSidebar = data;
   const arrivals = turnsOf(data).filter((turn) => !knownPromptIds.has(turn.promptId));
   for (const turn of turnsOf(data)) knownPromptIds.add(turn.promptId);
-  // A refresh must not cancel a confirmation in progress: re-arm the same row in the new markup.
+  // A refresh must not cancel what the user is in the middle of: re-arm the same row, and re-open the same menu, in the new markup.
   const armedBefore = armed;
+  const menuSessionId = menuButton?.closest('.session')?.getAttribute('data-session-id') ?? null;
   armed = null;
   closeMenu();
   sidebarScroll.innerHTML = data.sidebarHtml;
@@ -204,6 +205,10 @@ async function refreshSidebar() {
   } else if (armedBefore?.kind === 'session') {
     const row = sessionRowFor(armedBefore.id);
     if (row) armSession(row);
+  } else if (menuSessionId !== null) {
+    const row = sessionRowFor(menuSessionId);
+    const button = row?.querySelector('.session-menu-button');
+    if (row && button instanceof HTMLButtonElement) openSessionMenu(button, row);
   }
   follow(data, arrivals);
 }
