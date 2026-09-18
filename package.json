@@ -29,6 +29,7 @@
   },
   "files": [
     "bin",
+    "menubar",
     "skills",
     "src"
   ],
@@ -40,6 +41,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "check": "npm run lint && npm run typecheck && npm test",
+    "build:menubar": "sh scripts/build-menubar.sh",
     "prepublishOnly": "npm run check"
   },
   "devDependencies": {

@@ -22,6 +22,15 @@ export default [
     },
   },
   {
+    // The menu bar item is JavaScript for Automation, run by osascript: its
+    // globals are the ObjC bridge, not Node's.
+    files: ['menubar/**/*.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: { $: 'readonly', ObjC: 'readonly', Ref: 'readonly', console: 'readonly' },
+    },
+  },
+  {
     // Tests drive a real browser and evaluate snippets inside it.
     files: ['test/**/*.js'],
     languageOptions: {

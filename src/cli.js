@@ -68,6 +68,8 @@ Environment:
   SIDESCREEN_DISPATCH_TIMEOUT_MS          Time bound per question (default: 300000)
   SIDESCREEN_CONVENTIONS_FILES            Files forwarded as conventions, path-delimited
                                           (default: ~/.claude/CLAUDE.md, ./CLAUDE.md, ./AGENTS.md)
+  SIDESCREEN_MENUBAR                      macOS: set to off to skip the menu bar icon that start launches
+  SIDESCREEN_MENUBAR_BIN                  macOS: a program to run as the menu bar item instead of the shipped script
 `;
 
 /**

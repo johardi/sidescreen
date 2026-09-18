@@ -135,6 +135,29 @@ Its review threads are removed too.
 The original response remains in Claude Code's transcript.
 A session's newest response cannot be removed; it becomes removable once a newer response arrives.
 
+## The menu bar icon (macOS)
+
+On macOS, `sidescreen start` also puts a SideScreen icon in the menu bar.
+Its first menu entry reads "SideScreen is running" or "SideScreen is stopped", and hovering the icon shows the port and the server's version and process id.
+The menu offers:
+
+- **Open SideScreen**, which opens the server in your browser.
+- **Start** and **Stop**, which run `sidescreen start` and `sidescreen stop` for you.
+- **Show log**, which opens the server log.
+- **Quit**, which removes the icon and leaves the server running.
+
+Run `sidescreen start` to bring the icon back after quitting it.
+The icon runs its commands with the environment `sidescreen start` had when it launched the icon.
+After changing a setting, quit the icon and run `sidescreen start` again.
+The icon's own output goes to `menubar.log` in the state directory.
+Set `SIDESCREEN_MENUBAR=off` to skip the icon.
+
+The icon is a script run by macOS's own JavaScript interpreter, `osascript`, so sidescreen ships no compiled code for it and nothing has to be built or installed.
+`SIDESCREEN_MENUBAR_BIN` runs another program as the icon instead, with the same arguments; the repository carries a compiled Swift version under `native/` for anyone who can sign it.
+
+On Linux and Windows there is no icon and nothing is mentioned about one.
+The package installs the same way, nothing runs at install time, and every command works as described; the helper's files sit unused.
+
 ## Set up more projects
 
 Run `sidescreen init` once in each project you want to use.
@@ -192,6 +215,8 @@ Configuration is optional and uses environment variables.
 | `SIDESCREEN_CODEX_MODEL` | Codex CLI default | Model for Codex answers. |
 | `SIDESCREEN_DISPATCH_TIMEOUT_MS` | `300000` | Maximum time in milliseconds for one answer. |
 | `SIDESCREEN_CONVENTIONS_FILES` | `~/.claude/CLAUDE.md`, `./CLAUDE.md`, `./AGENTS.md` | Instruction files passed to the sub-agent. Use your operating system's path separator between files. |
+| `SIDESCREEN_MENUBAR` | `on` | macOS only. Set to `off` to keep `sidescreen start` from showing the menu bar icon. |
+| `SIDESCREEN_MENUBAR_BIN` | The shipped script, through `osascript` | macOS only. Another program to run as the menu bar icon, with the same arguments. |
 
 ## Privacy and safety
 

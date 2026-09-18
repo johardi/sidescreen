@@ -14,6 +14,7 @@ import { DEFAULT_PORT } from '../web/server.js';
 import { probe } from './probe.js';
 import { assess, problemLine, runningLines } from './report.js';
 import { openInBrowser } from './browser.js';
+import { launchMenubar } from './menubar.js';
 import { projectUrl } from './report.js';
 import { serverUrl } from './probe.js';
 
@@ -49,12 +50,16 @@ export async function startCommand({ port, open: openPage, cwd, env, stateDir, b
   }
 
   /**
-   * Report a server on this store.
+   * Report a server on this store and, on macOS, give it its menu bar item.
    *
    * @param {import('./probe.js').ProbeResult} result
    * @param {boolean} found
    */
-  const succeed = (result, found) => report({ command: 'start', result, found, port, cwd, stateDir, openPage, stdout, stderr });
+  const succeed = async (result, found) => {
+    const code = await report({ command: 'start', result, found, port, cwd, stateDir, openPage, stdout, stderr });
+    if (code === 0) await launchMenubar({ port, stateDir, env, stderr, binPath, execPath });
+    return code;
+  };
 
   const before = await probe(port);
   if (before.kind !== 'none') return succeed(before, true);

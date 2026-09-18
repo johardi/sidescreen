@@ -35,3 +35,7 @@ coverage/
 # OS
 .DS_Store
 Thumbs.db
+
+# Menu bar helper build output (scripts/build-menubar.sh)
+native/bin/
+native/menubar/Version.swift
