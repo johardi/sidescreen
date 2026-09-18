@@ -199,7 +199,9 @@ Removal SHALL be accepted only from the surface's own origin, like every other s
 - **WHEN** the user removes the past turn currently shown
 - **THEN** the page moves to the project's follow address
 
-### Requirement: The sidebar and the thread pane are resizable
+## ADDED Requirements
+
+### Requirement: The sidebar and the thread pane are resized by the user, the document the wider by default
 
 The workspace SHALL provide a handle on the sidebar's right edge and a handle on the thread pane's left edge that set that pane's width when dragged, and each handle SHALL be operable from the keyboard.
 Until the user sets a width, the document and the thread pane SHALL share their space seven to five, the document the wider.
@@ -231,7 +233,6 @@ Activating a handle twice in quick succession SHALL restore that pane's default 
 - **WHEN** the user activates a handle twice in quick succession
 - **THEN** that pane returns to its default width
 
-## ADDED Requirements
 
 ### Requirement: A session can be removed with everything in it
 
@@ -328,3 +329,10 @@ Under each answered exchange the actions to carry the answer back and to branch 
 
 - **WHEN** an exchange has been answered
 - **THEN** two icon controls sit at the left under it, one to carry the answer back and one to branch from it, each naming itself in a tooltip
+
+## REMOVED Requirements
+
+### Requirement: The sidebar and the thread pane are resizable
+
+**Reason**: Its "Equal widths by default" scenario no longer holds: the default split is now seven parts document to five thread pane. The requirement returns under a name and scenarios that say what the split is.
+**Migration**: The same handles, keyboard steps, limits, and double activation are specified by "The sidebar and the thread pane are resized by the user, the document the wider by default"; nothing in the browser or the stored layout changes.
