@@ -280,10 +280,11 @@ function renderThreadPane() {
   const section = renderThread(active, root, roots.indexOf(root) + 1, list);
   threadPane.append(section);
 
-  // A new exchange, or another thread, scrolls to the newest; a re-render of the same exchanges stays where the reader was.
+  // A new exchange, or another thread, brings the newest exchange's question to the top of the list; a re-render of the same exchanges stays where the reader was.
   const exchanges = /** @type {HTMLElement} */ (section.querySelector('.exchanges'));
   const grew = state.shown.threadId !== active.id || active.exchanges.length > state.shown.exchanges;
-  exchanges.scrollTop = grew ? exchanges.scrollHeight : previousScroll;
+  const newest = exchanges.lastElementChild;
+  exchanges.scrollTop = grew ? (newest instanceof HTMLElement ? newest.offsetTop - exchanges.offsetTop : exchanges.scrollHeight) : previousScroll;
   state.shown = { threadId: active.id, exchanges: active.exchanges.length };
 
   // Whatever was being typed comes back, in the same field, with the caret where it was; a branch field just opened takes focus.
