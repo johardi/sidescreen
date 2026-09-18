@@ -15,11 +15,20 @@ import { startServer, waitForAnswer } from '../server-helpers.js';
 
 const stopPayload = JSON.parse(await readFile(join(FIXTURES, 'stop-hook-payload.json'), 'utf8'));
 
+/**
+ * The context block inside the hook's JSON output.
+ *
+ * @param {string} stdout
+ */
+const contextOf = (stdout) => JSON.parse(stdout).hookSpecificOutput.additionalContext;
+/** @param {string} stdout */
+const messageOf = (stdout) => JSON.parse(stdout).systemMessage;
+
 /** @param {string} sessionId */
 const promptSubmitPayload = (sessionId) =>
   JSON.stringify({ session_id: sessionId, transcript_path: '/t.jsonl', cwd: '/p', hook_event_name: 'UserPromptSubmit', prompt: 'next thing' });
 
-test('6.2 --emit prints only the pending entries for the payload session, as plain text', async (t) => {
+test('6.2 --emit prints only the pending entries for the payload session, as hook JSON with the block and a message', async (t) => {
   const stateDir = await tempDir(t);
   await new Store(stateDir).update((state) => {
     addEntry(state, { sessionId: 'sess-a', text: 'Keep the directory lock.' });
@@ -29,7 +38,9 @@ test('6.2 --emit prints only the pending entries for the payload session, as pla
   const result = await runCli(['carry-back', '--emit'], { env: { SIDESCREEN_STATE_DIR: stateDir }, input: promptSubmitPayload('sess-a') });
   assert.equal(result.code, 0, result.stderr);
   assert.equal(result.stderr, '');
-  assert.equal(result.stdout, `${EMISSION_HEADER}\n- Keep the directory lock.\n- Rename store.lock to store.lockdir.\n`);
+  assert.equal(contextOf(result.stdout), `${EMISSION_HEADER}\n- Keep the directory lock.\n- Rename store.lock to store.lockdir.\n`);
+  assert.equal(messageOf(result.stdout), 'SideScreen carried back 2 conclusions:\n- Keep the directory lock.\n- Rename store.lock to store.lockdir.', 'the terminal shows what crossed');
+  assert.doesNotMatch(result.stdout, /another session/);
 });
 
 test('6.2 --emit prints nothing and exits 0 when the list is empty or the store does not exist yet', async (t) => {
@@ -50,7 +61,7 @@ test('--session names the session when there is no hook payload; bad invocations
     addEntry(state, { sessionId: 'sess-a', text: 'By flag.' });
   });
   const byFlag = await runCli(['carry-back', '--emit', '--session', 'sess-a'], { env: { SIDESCREEN_STATE_DIR: stateDir } });
-  assert.equal(byFlag.stdout, `${EMISSION_HEADER}\n- By flag.\n`);
+  assert.equal(contextOf(byFlag.stdout), `${EMISSION_HEADER}\n- By flag.\n`);
 
   const noEmit = await runCli(['carry-back'], { env: { SIDESCREEN_STATE_DIR: stateDir } });
   assert.equal(noEmit.code, 1);
@@ -77,7 +88,7 @@ test('inside a sub-agent sidescreen started, --emit prints nothing and leaves th
   assert.equal((await new Store(stateDir).read()).carryBack['sess-a'][0].emittedAt, null, 'still pending');
 
   const outside = await runCli(['carry-back', '--emit'], { env: { SIDESCREEN_STATE_DIR: stateDir }, input: promptSubmitPayload('sess-a') });
-  assert.equal(outside.stdout, `${EMISSION_HEADER}\n- Owed to the terminal.\n`, 'the next unmarked prompt receives it');
+  assert.equal(contextOf(outside.stdout), `${EMISSION_HEADER}\n- Owed to the terminal.\n`, 'the next unmarked prompt receives it');
 });
 
 test('6.3 setup hooks registers the UserPromptSubmit hook, once per event, however often it runs', async (t) => {
@@ -102,7 +113,7 @@ test('6.4 emitted entries are not emitted again: the second emit prints nothing'
   });
   const env = { SIDESCREEN_STATE_DIR: stateDir };
   const first = await runCli(['carry-back', '--emit'], { env, input: promptSubmitPayload('sess-a') });
-  assert.equal(first.stdout, `${EMISSION_HEADER}\n- Once only.\n`);
+  assert.equal(contextOf(first.stdout), `${EMISSION_HEADER}\n- Once only.\n`);
   const second = await runCli(['carry-back', '--emit'], { env, input: promptSubmitPayload('sess-a') });
   assert.deepEqual(second, { code: 0, stdout: '', stderr: '' });
 
@@ -148,7 +159,8 @@ test('6.5 end to end: thread contents never appear in the emitted output, only c
   // 3. The next prompt's hook emits the conclusion and nothing from the thread.
   const emitted = await runCli(['carry-back', '--emit'], { env, input: promptSubmitPayload(stopPayload.session_id) });
   assert.equal(emitted.code, 0, emitted.stderr);
-  assert.equal(emitted.stdout, `${EMISSION_HEADER}\n- ${CONCLUSION}\n`);
+  assert.equal(contextOf(emitted.stdout), `${EMISSION_HEADER}\n- ${CONCLUSION}\n`);
+  assert.equal(messageOf(emitted.stdout), `SideScreen carried back 1 conclusion:\n- ${CONCLUSION}`);
   assert.doesNotMatch(emitted.stdout, /QUESTION-MARKER|ANSWER-MARKER|SOURCEDETAIL-MARKER/, 'no question, answer, or source detail leaks');
   assert.doesNotMatch(emitted.stdout, new RegExp(thread.id), 'no thread id leaks');
   assert.doesNotMatch(emitted.stdout, /The store uses a directory lock/, 'the turn text does not leak');

@@ -29,6 +29,7 @@ Each entry is a decision the user already made while reading your earlier output
 Act on it without re-deriving it, and do not ask what it refers to unless it is genuinely ambiguous.
 An entry is injected once and never repeated, so treat it as part of the prompt it arrived with.
 When nothing was carried back, nothing is injected.
+The user sees the same lines in their terminal when they cross, so they know what you received.
 
 ## What not to do
 

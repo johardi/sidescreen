@@ -62,7 +62,7 @@ It will appear in sidescreen automatically.
 
 1. Select text in the response.
 2. Type a question in the box that appears.
-3. Press Enter or choose **Ask**.
+3. Press Enter. Escape closes the box instead.
 4. Read the answer in the right-hand column.
 
 The answering sub-agent runs with read-only access.
@@ -122,7 +122,7 @@ Select the bar to open it, and use its maximize control for a long conclusion.
 Until it is sent, an entry can still change: select its text to edit it in place, press Enter to save, or Escape to leave it as it was.
 The remove control beside an entry drops it.
 
-The pending conclusions are added as context to that next prompt.
+The pending conclusions are added as context to that next prompt, and the terminal shows them at the same moment, so you can see what crossed.
 After they are sent, they disappear from the pending list.
 Side questions, sub-agent answers, and highlighted text are not included.
 

@@ -401,7 +401,8 @@ test('entries leave the page once they have been carried back, and the page lear
   // The next prompt's hook emits from another process; the page must notice on its own.
   const emitted = await runCli(['carry-back', '--emit', '--session', 'session-1'], { env: { SIDESCREEN_STATE_DIR: stateDir } });
   assert.equal(emitted.code, 0, emitted.stderr);
-  assert.match(emitted.stdout, /First conclusion.\n- Second conclusion./);
+  assert.match(JSON.parse(emitted.stdout).hookSpecificOutput.additionalContext, /First conclusion.\n- Second conclusion./);
+  assert.match(JSON.parse(emitted.stdout).systemMessage, /^SideScreen carried back 2 conclusions:/, 'and the terminal is told');
 
   await page.locator('.carry-back-entry').first().waitFor({ state: 'detached', timeout: 5_000 });
   assert.equal(await page.locator('.carry-back-entry').count(), 0, 'sent entries are no longer listed');

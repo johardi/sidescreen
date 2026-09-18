@@ -4,8 +4,9 @@
  * The user adds conclusions while reviewing. On the next prompt, the
  * UserPromptSubmit hook runs `sidescreen carry-back --emit`, which prints the
  * pending entries and nothing else: no questions, no answers, no thread text.
- * Claude Code injects that stdout as context, and the entries are then marked
- * emitted so they are not injected again.
+ * It prints them as the hook JSON the harness understands: the block goes to
+ * the model as context, and a message shows the user in the terminal what
+ * crossed. The entries are then marked emitted so they are not sent again.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -91,15 +92,50 @@ export function editEntry(state, sessionId, entryId, text) {
   return 'edited';
 }
 
+/** @param {CarryBackEntry} entry */
+function oneLine(entry) {
+  return `- ${entry.text.replace(/\s*\n\s*/g, ' ')}`;
+}
+
 /**
- * The plain text injected into the next prompt. Empty when nothing is pending.
+ * The plain text injected into the next prompt as context. Empty when nothing is pending.
  *
  * @param {CarryBackEntry[]} entries
  * @returns {string}
  */
 export function formatEmission(entries) {
   if (entries.length === 0) return '';
-  return `${EMISSION_HEADER}\n${entries.map((entry) => `- ${entry.text.replace(/\s*\n\s*/g, ' ')}`).join('\n')}\n`;
+  return `${EMISSION_HEADER}\n${entries.map(oneLine).join('\n')}\n`;
+}
+
+/**
+ * What the terminal shows the user at the prompt where the entries cross:
+ * how many, then the lines themselves.
+ *
+ * @param {CarryBackEntry[]} entries
+ * @returns {string}
+ */
+export function formatSystemMessage(entries) {
+  if (entries.length === 0) return '';
+  return `SideScreen carried back ${entries.length} ${entries.length === 1 ? 'conclusion' : 'conclusions'}:\n${entries.map(oneLine).join('\n')}`;
+}
+
+/**
+ * What the hook prints: one JSON object the harness parses, carrying the
+ * block twice. `additionalContext` reaches the model exactly as the plain
+ * block did; `systemMessage` is shown to the user, which plain text never is.
+ * Empty when nothing is pending, so an idle prompt stays silent.
+ *
+ * @param {CarryBackEntry[]} entries
+ * @returns {string}
+ */
+export function formatHookOutput(entries) {
+  if (entries.length === 0) return '';
+  const output = {
+    hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: formatEmission(entries) },
+    systemMessage: formatSystemMessage(entries),
+  };
+  return `${JSON.stringify(output)}\n`;
 }
 
 /**
@@ -111,7 +147,7 @@ export function formatEmission(entries) {
 export async function emitCarryBack({ store, sessionId, stdout, now = new Date() }) {
   const pending = pendingEntries(await store.read(), sessionId);
   if (pending.length === 0) return 0;
-  stdout.write(formatEmission(pending));
+  stdout.write(formatHookOutput(pending));
   const emittedIds = new Set(pending.map((entry) => entry.id));
   await store.update((state) => {
     for (const entry of entriesFor(state, sessionId)) {

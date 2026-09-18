@@ -2,7 +2,17 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Writable } from 'node:stream';
 import { emptyState, Store } from '../../src/store/store.js';
-import { EMISSION_HEADER, addEntry, editEntry, emitCarryBack, formatEmission, pendingEntries, removeEntry } from '../../src/store/carry-back.js';
+import { EMISSION_HEADER, addEntry, editEntry, emitCarryBack, formatEmission, formatHookOutput, formatSystemMessage, pendingEntries, removeEntry } from '../../src/store/carry-back.js';
+
+/**
+ * The hook's stdout, parsed: the block the model receives and the message the user sees.
+ *
+ * @param {string} stdout
+ */
+function hookOutput(stdout) {
+  const parsed = JSON.parse(stdout);
+  return { context: parsed.hookSpecificOutput.additionalContext, event: parsed.hookSpecificOutput.hookEventName, message: parsed.systemMessage };
+}
 import { HookPayloadError, parseUserPromptSubmitPayload } from '../../src/hooks/hook-payload.js';
 import { tempDir } from '../helpers.js';
 import { rawRequest, sampleTurn, startServer, turnHref } from '../server-helpers.js';
@@ -40,6 +50,20 @@ test('the emission is plain text: a header and one line per entry, or nothing at
   assert.equal(formatEmission(pendingEntries(state, 's')), `${EMISSION_HEADER}\n- First conclusion.\n- Second, with a line break.\n`);
 });
 
+test('the hook output carries the block for the model and the message for the user, or nothing at all', () => {
+  assert.equal(formatHookOutput([]), '', 'nothing pending, nothing printed');
+  assert.equal(formatSystemMessage([]), '');
+  const state = emptyState();
+  addEntry(state, { sessionId: 's', text: 'Keep the lock.' });
+  addEntry(state, { sessionId: 's', text: 'Second, with\na line break.' });
+  const entries = pendingEntries(state, 's');
+  const output = hookOutput(formatHookOutput(entries));
+  assert.equal(output.event, 'UserPromptSubmit');
+  assert.equal(output.context, formatEmission(entries), 'the model receives the block unchanged');
+  assert.equal(output.message, 'SideScreen carried back 2 conclusions:\n- Keep the lock.\n- Second, with a line break.');
+  assert.equal(formatSystemMessage(entries.slice(0, 1)), 'SideScreen carried back 1 conclusion:\n- Keep the lock.');
+});
+
 test('emitting prints the pending entries once and marks exactly those emitted', async (t) => {
   const store = new Store(await tempDir(t));
   await store.update((state) => {
@@ -50,7 +74,12 @@ test('emitting prints the pending entries once and marks exactly those emitted',
 
   const first = sink();
   assert.equal(await emitCarryBack({ store, sessionId: 's', stdout: first.stream }), 2);
-  assert.equal(first.read(), `${EMISSION_HEADER}\n- Alpha\n- Beta\n`);
+  assert.deepEqual(hookOutput(first.read()), {
+    context: `${EMISSION_HEADER}\n- Alpha\n- Beta\n`,
+    event: 'UserPromptSubmit',
+    message: 'SideScreen carried back 2 conclusions:\n- Alpha\n- Beta',
+  });
+  assert.match(first.read(), /^\{.*\}\n$/s, 'one JSON object on one line, the shape the harness parses');
 
   const second = sink();
   assert.equal(await emitCarryBack({ store, sessionId: 's', stdout: second.stream }), 0);
@@ -61,7 +90,8 @@ test('emitting prints the pending entries once and marks exactly those emitted',
   });
   const third = sink();
   assert.equal(await emitCarryBack({ store, sessionId: 's', stdout: third.stream }), 1);
-  assert.equal(third.read(), `${EMISSION_HEADER}\n- Gamma, added later\n`);
+  assert.equal(hookOutput(third.read()).context, `${EMISSION_HEADER}\n- Gamma, added later\n`);
+  assert.equal(hookOutput(third.read()).message, 'SideScreen carried back 1 conclusion:\n- Gamma, added later');
 
   const state = await store.read();
   assert.deepEqual(
