@@ -202,7 +202,7 @@ Removal SHALL be accepted only from the surface's own origin, like every other s
 ### Requirement: The sidebar and the thread pane are resizable
 
 The workspace SHALL provide a handle on the sidebar's right edge and a handle on the thread pane's left edge that set that pane's width when dragged, and each handle SHALL be operable from the keyboard.
-Until the user sets a width, the document and the thread pane SHALL share their space six to five, the document the wider.
+Until the user sets a width, the document and the thread pane SHALL share their space seven to five, the document the wider.
 Each pane SHALL have a minimum width, so that no pane can be dragged out of view, and a width larger than the window allows SHALL be clamped to what fits.
 Activating a handle twice in quick succession SHALL restore that pane's default width.
 
@@ -214,7 +214,7 @@ Activating a handle twice in quick succession SHALL restore that pane's default 
 #### Scenario: The default split
 
 - **WHEN** the user opens a workspace in a browser that has no remembered layout
-- **THEN** the document is a fifth wider than the thread pane
+- **THEN** the document is two fifths wider than the thread pane
 
 #### Scenario: Dragging past the minimum
 

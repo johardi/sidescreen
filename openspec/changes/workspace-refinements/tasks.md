@@ -52,4 +52,4 @@
 
 ## 9. The default split
 
-- [x] 9.1 Weight the document's grid track at 1.2fr against the thread pane's 1fr so the default split is six to five, add the MODIFIED resizable requirement with its default-split scenario, and update the tests that expected equal widths; verify with the browser tests that a fresh workspace and a double-activated thread handle both show the document a fifth wider, and run `npm run check`
+- [x] 9.1 Weight the document's grid track at 1.4fr against the thread pane's 1fr so the default split is seven to five, add the MODIFIED resizable requirement with its default-split scenario, and update the tests that expected equal widths; verify with the browser tests that a fresh workspace and a double-activated thread handle both show the document two fifths wider, and run `npm run check`

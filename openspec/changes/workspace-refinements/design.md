@@ -194,7 +194,7 @@ The second review set the widths from a screenshot at 1871px wide, where the doc
 
 ### The default split favours the document
 
-Read on a wide screen, the equal split left the document cramped beside a thread pane with room to spare, so the grid's document track is `minmax(300px, 1.2fr)` against the thread pane's `minmax(260px, 1fr)`: six parts to five until the user drags a handle, and again when a double activation restores the default.
+Read on a wide screen, the equal split left the document cramped beside a thread pane with room to spare, so the grid's document track is `minmax(300px, 1.4fr)` against the thread pane's `minmax(260px, 1fr)`: seven parts to five until the user drags a handle, and again when a double activation restores the default.
 The layout module still writes the thread pane's fractional track; only the document's weight changed, in the stylesheet.
 
 ### The sent note is a moment, not a tally
