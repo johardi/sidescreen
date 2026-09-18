@@ -41,10 +41,11 @@ What exists after `workspace-shell`, and what constrains the approach:
 ### The composer floats in the document pane's corner, in three states
 
 The carry-back zone leaves the grid.
-It becomes an `<aside>` inside the document pane, `position: absolute`, 16px from the pane's bottom and right edges, so the pane's existing positioning context places it and the pane's scrolling does not move it.
+It becomes an `<aside>` beside the document pane inside a non-scrolling cell that occupies the pane's grid track, `position: absolute` in that cell, 16px from its bottom and right edges.
+The cell is what anchors it: an element absolutely positioned inside the scrolling pane itself would travel with the content, which the first cut of this change did.
 The grid loses its second row; the sidebar no longer needs to span two rows.
 
-Three states, on a `data-state` attribute:
+Three states, keyed on a `data-composer` attribute on the root element, which the stylesheet reads:
 
 - **minimized**: the header bar alone, 320px wide: the title, the pending count, and an expand control.
 - **open**: 380px wide, up to 60% of the pane's height: the header, the entries, the text box.
@@ -75,7 +76,7 @@ Alternatives considered:
 
 ### Editing an entry is one route and one store function
 
-`editEntry(state, sessionId, entryId, text)` replaces a pending entry's text and returns false when the entry is missing or already emitted.
+`editEntry(state, sessionId, entryId, text)` replaces a pending entry's text and says whether it did, or why not: the entry was missing, or already emitted.
 The route answers 404 for a missing entry, 409 for an emitted one, 400 for empty text, and broadcasts `carry-back-updated` like the other two.
 The emit reads the store at prompt time, so an edit made a second before the prompt is what travels.
 
@@ -125,7 +126,7 @@ The pane becomes `display: flex; flex-direction: column`.
 A top block holds the chips, the thread header, the branch tabs, and the lineage line, `flex: none`.
 The exchanges list is `flex: 1 1 auto; min-height: 0; overflow-y: auto`.
 The follow-up form is `flex: none` with a top rule.
-On render, when the exchange count grew since the last render, the list scrolls to its end; otherwise its scroll position is kept, since the pending-answer poll re-renders every few seconds.
+On render, when the exchange count grew since the last render or another thread was chosen, the list scrolls so the newest exchange's question sits at its top, which reads better than landing at the end of a long answer; otherwise its scroll position is kept, since the pending-answer poll re-renders every few seconds, and whatever was typed in a field is handed back to the new field with the caret where it was.
 
 The follow-up form is the text area alone; Enter submits, Shift+Enter breaks a line, and the placeholder says "Enter sends".
 The branch form is the same, with Escape closing it, and the "Ask on a branch" and "Cancel" buttons go with the follow-up button.
