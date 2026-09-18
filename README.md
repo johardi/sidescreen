@@ -82,8 +82,10 @@ It means the sub-agent checked the available sources instead of guessing.
 A small line above each answer says who produced it, "Claude answered:" or "CODEX answered:".
 Hover over it to see the model.
 
-You can ask follow-up questions in the same thread.
-You can also branch from an answer when you want to explore a different question without changing the original thread.
+You can ask follow-up questions in the field at the bottom of the answers column.
+Press Enter to send and Shift+Enter for a new line.
+To branch from an answer when you want to explore a different question without changing the original thread, select the branch icon under it, type the question, and press Enter.
+Escape closes the field without sending.
 
 ## Choose who answers
 
@@ -107,12 +109,18 @@ The only differences are how each CLI is started and kept read-only.
 ## Carry a conclusion back to Claude Code
 
 Sidescreen never sends the full review to your Claude Code session.
-You decide what crosses back:
+You decide what crosses back.
 
-1. Write a concise conclusion in **Carry back**, or use an answer to start a draft.
+The **Carry back** panel sits at the bottom right of the response, minimized to a bar that shows how many conclusions are pending.
+Select the bar to open it, and use its maximize control for a long conclusion.
+
+1. Write a concise conclusion in the panel's text box, or select the carry-back icon under an answer to start from its text.
 2. Edit the draft so it states the decision or useful fact in your own words.
-3. Choose **Add to carry-back**.
+3. Press Enter to add it. Shift+Enter starts a new line.
 4. Send your next prompt in the same Claude Code session.
+
+Until it is sent, an entry can still change: select its text to edit it in place, press Enter to save, or Escape to leave it as it was.
+The remove control beside an entry drops it.
 
 The pending conclusions are added as context to that next prompt.
 After they are sent, they disappear from the pending list.
@@ -121,11 +129,13 @@ Side questions, sub-agent answers, and highlighted text are not included.
 ## Navigate projects and sessions
 
 The home page lists every project that has sent a response to sidescreen.
-Inside a project, the sidebar groups responses by Claude Code session.
+Inside a project, the sidebar shows each Claude Code session as a tree: the session's title, and under it one line per response.
+Hover a response to see when it arrived.
+Select a session's title to collapse it; a collapsed session shows how many responses it holds.
 The header shows the project's name in the centre, its full path at the right, and a back arrow at the left that returns to the list of projects.
 
 - A project page shows the newest response from any of its sessions and keeps following as new ones arrive.
-- **Follow** on a session follows new responses from that session only.
+- The menu at the right edge of a session row offers **Follow this session**, which follows new responses from that session only.
 - Selecting a specific response pins it, so it stays open when newer ones arrive.
 - The tag beside the project name says what the page follows. When the page is pinned or follows one session, select the tag to return to following the project.
 
@@ -135,19 +145,25 @@ It will show a notice linking to the new response instead.
 To remove a stored response, hover over it in the sidebar and select the × twice to confirm.
 Its review threads are removed too.
 The original response remains in Claude Code's transcript.
-A session's newest response cannot be removed; it becomes removable once a newer response arrives.
+A session's newest response cannot be removed on its own; it becomes removable once a newer response arrives.
+
+To remove a whole session with every response in it, choose **Remove session** from the session's menu and confirm.
+The conclusions you carried back from that session are kept, because the terminal session may still be running.
+If the session sends another response later, it reappears.
 
 ## Arrange the workspace
 
 The workspace fills the browser window.
-The header stays at the top and **Carry back** stays at the bottom, while the sidebar, the response, and the answers each scroll on their own.
+The header stays at the top, while the sidebar, the response, and the answers each scroll on their own.
 
 - Drag the edge of the sidebar or of the answers column to change its width.
 - A handle also responds to the arrow keys, and to Home and End, once it has keyboard focus.
 - Double-click a handle to restore the default width.
-- Select the columns icon in the header to hide the sidebar, and again to show it.
+- The foot of the sidebar holds the control that hides it, a switch for the colour scheme, and the version.
+- Hidden, the sidebar shrinks to a narrow rail that keeps both controls in the same corner.
+- The colour scheme switch cycles through following your system, light, and dark.
 
-The browser remembers the widths and whether the sidebar is hidden, so they survive reloads and apply to every project.
+The browser remembers the widths, whether the sidebar is hidden, the carry-back panel's state, and the colour scheme, so they survive reloads and apply to every project.
 On a narrow window the panels stack and the page scrolls as one.
 
 ## The menu bar icon (macOS)
