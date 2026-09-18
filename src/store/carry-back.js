@@ -71,6 +71,26 @@ export function removeEntry(state, sessionId, entryId) {
   return true;
 }
 
+/** @typedef {'edited'|'missing'|'emitted'} EditOutcome */
+
+/**
+ * Replace a pending entry's text. An entry that has been emitted is final:
+ * the terminal already has it.
+ *
+ * @param {State} state
+ * @param {string} sessionId
+ * @param {string} entryId
+ * @param {string} text
+ * @returns {EditOutcome}
+ */
+export function editEntry(state, sessionId, entryId, text) {
+  const entry = (state.carryBack[sessionId] ?? []).find((candidate) => candidate.id === entryId);
+  if (!entry) return 'missing';
+  if (entry.emittedAt !== null) return 'emitted';
+  entry.text = text.trim();
+  return 'edited';
+}
+
 /**
  * The plain text injected into the next prompt. Empty when nothing is pending.
  *

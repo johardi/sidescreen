@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Writable } from 'node:stream';
 import { emptyState, Store } from '../../src/store/store.js';
-import { EMISSION_HEADER, addEntry, emitCarryBack, formatEmission, pendingEntries, removeEntry } from '../../src/store/carry-back.js';
+import { EMISSION_HEADER, addEntry, editEntry, emitCarryBack, formatEmission, pendingEntries, removeEntry } from '../../src/store/carry-back.js';
 import { HookPayloadError, parseUserPromptSubmitPayload } from '../../src/hooks/hook-payload.js';
 import { tempDir } from '../helpers.js';
 import { rawRequest, sampleTurn, startServer, turnHref } from '../server-helpers.js';
@@ -115,4 +115,44 @@ test('turns from different sessions see different carry-back lists', async (t) =
   const two = await (await fetch(new URL('/api/turns/prompt-2', url))).json();
   assert.deepEqual(one.carryBack, []);
   assert.equal(two.carryBack[0].text, 'Only in session two');
+});
+
+test('a pending entry can be edited; a missing or emitted one cannot', () => {
+  const state = emptyState();
+  const entry = addEntry(state, { sessionId: 's', text: 'First wording.' });
+  assert.equal(editEntry(state, 's', entry.id, '  Better wording.  '), 'edited');
+  assert.equal(state.carryBack.s[0].text, 'Better wording.');
+  assert.equal(editEntry(state, 's', 'nope', 'x'), 'missing');
+  assert.equal(editEntry(state, 'other-session', entry.id, 'x'), 'missing');
+  entry.emittedAt = '2026-01-01T00:00:00.000Z';
+  assert.equal(editEntry(state, 's', entry.id, 'Too late.'), 'emitted');
+  assert.equal(state.carryBack.s[0].text, 'Better wording.', 'a sent entry keeps its text');
+});
+
+test('the API edits a pending entry, refuses a sent one, and the emit carries the edited text', async (t) => {
+  const { url, port, store } = await startServer(t);
+  const json = { 'Content-Type': 'application/json' };
+  const base = new URL('/api/sessions/session-1/carry-back', url);
+  const { entry } = await (await fetch(base, { method: 'POST', headers: json, body: JSON.stringify({ text: 'First wording.' }) })).json();
+  const entryUrl = new URL(`/api/sessions/session-1/carry-back/${entry.id}`, url);
+
+  const edited = await fetch(entryUrl, { method: 'PATCH', headers: json, body: JSON.stringify({ text: ' Second wording. ' }) });
+  assert.equal(edited.status, 200);
+  const payload = await edited.json();
+  assert.equal(payload.entry.text, 'Second wording.');
+  assert.deepEqual(payload.entries.map((/** @type {{ text: string }} */ e) => e.text), ['Second wording.']);
+
+  assert.equal((await fetch(entryUrl, { method: 'PATCH', headers: json, body: JSON.stringify({ text: '   ' }) })).status, 400);
+  assert.equal((await fetch(new URL('/api/sessions/session-1/carry-back/nope', url), { method: 'PATCH', headers: json, body: JSON.stringify({ text: 'x' }) })).status, 404);
+  const crossSite = await rawRequest({ port, path: `/api/sessions/session-1/carry-back/${entry.id}`, method: 'PATCH', headers: { Origin: 'https://evil.example', ...json }, body: JSON.stringify({ text: 'x' }) });
+  assert.equal(crossSite.status, 403);
+
+  const out = sink();
+  await emitCarryBack({ store, sessionId: 'session-1', stdout: out.stream });
+  assert.match(out.read(), /- Second wording\./, 'the edited text is what travels');
+  assert.doesNotMatch(out.read(), /First wording/);
+
+  const late = await fetch(entryUrl, { method: 'PATCH', headers: json, body: JSON.stringify({ text: 'Third wording.' }) });
+  assert.equal(late.status, 409, 'a sent entry is final');
+  assert.equal((await store.read()).carryBack['session-1'][0].text, 'Second wording.');
 });

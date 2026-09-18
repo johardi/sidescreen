@@ -15,13 +15,13 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { VERSION } from '../version.js';
 import { renderMarkdown } from './render-markdown.js';
 import { renderErrorPage, renderLandingPage, renderSidebar, renderWorkspacePage } from './page.js';
-import { isNewestInSession, listTurns, removeTurn, turnsForSession } from '../store/turns.js';
+import { isNewestInSession, listTurns, removeSession, removeTurn, turnsForSession } from '../store/turns.js';
 import { findProject, listProjects, projectId, projectPath, sessionPath, turnPath } from '../store/projects.js';
 import { sessionsIn } from '../store/sessions.js';
 import { presentSidebar } from './sidebar.js';
 import { createThread, createExchange, lineageOf, listThreadsForTurn, validateAnchor } from '../store/threads.js';
 import { isIngestHookRegistered } from '../hooks/setup-hooks.js';
-import { addEntry, entriesFor, removeEntry } from '../store/carry-back.js';
+import { addEntry, editEntry, entriesFor, removeEntry } from '../store/carry-back.js';
 import { STORE_FILE_NAME } from '../store/store.js';
 import { dispatchSettings } from '../dispatch/backends.js';
 import { isAnswered, routeQuestion } from '../dispatch/route.js';
@@ -53,6 +53,7 @@ import { isAnswered, routeQuestion } from '../dispatch/route.js';
 
 /** The message a client gets for trying to remove a session's newest turn. */
 export const NEWEST_TURN_ERROR = "Only past turns can be removed. A session's newest turn stays.";
+export const SENT_ENTRY_ERROR = 'This entry has already been sent to the terminal and cannot be changed.';
 
 /** @typedef {(input: DispatchInput) => Promise<DispatchResult>} Dispatch */
 
@@ -245,10 +246,14 @@ export class SidescreenServer {
     if (method === 'GET' && (match = /^\/api\/threads\/([^/]+)$/.exec(path))) return this.#apiThread(res, decodeURIComponent(match[1]));
     if (method === 'POST' && (match = /^\/api\/threads\/([^/]+)\/exchanges$/.exec(path))) return this.#apiFollowUp(req, res, decodeURIComponent(match[1]));
     if (method === 'POST' && (match = /^\/api\/threads\/([^/]+)\/branches$/.exec(path))) return this.#apiBranch(req, res, decodeURIComponent(match[1]));
+    if (method === 'DELETE' && (match = /^\/api\/sessions\/([^/]+)$/.exec(path))) return this.#apiRemoveSession(req, res, decodeURIComponent(match[1]));
     if (method === 'GET' && (match = /^\/api\/sessions\/([^/]+)\/carry-back$/.exec(path))) return this.#apiCarryBack(res, decodeURIComponent(match[1]));
     if (method === 'POST' && (match = /^\/api\/sessions\/([^/]+)\/carry-back$/.exec(path))) return this.#apiAddCarryBack(req, res, decodeURIComponent(match[1]));
     if (method === 'DELETE' && (match = /^\/api\/sessions\/([^/]+)\/carry-back\/([^/]+)$/.exec(path))) {
       return this.#apiRemoveCarryBack(req, res, decodeURIComponent(match[1]), decodeURIComponent(match[2]));
+    }
+    if (method === 'PATCH' && (match = /^\/api\/sessions\/([^/]+)\/carry-back\/([^/]+)$/.exec(path))) {
+      return this.#apiEditCarryBack(req, res, decodeURIComponent(match[1]), decodeURIComponent(match[2]));
     }
     if (method === 'GET' && path === '/api/events') return this.#events(req, res);
     if (method === 'GET' && path === '/api/health') return this.#apiHealth(res);
@@ -777,6 +782,39 @@ export class SidescreenServer {
     }
     this.broadcast({ type: 'carry-back-updated', sessionId });
     sendJson(res, 200, { entries: entriesFor(state, sessionId) });
+  }
+
+  /**
+   * Change a pending entry's wording. A sent entry is final.
+   *
+   * @param {http.IncomingMessage} req
+   * @param {http.ServerResponse} res
+   * @param {string} sessionId
+   * @param {string} entryId
+   */
+  async #apiEditCarryBack(req, res, sessionId, entryId) {
+    const body = await this.#readJsonBody(req, res);
+    if (body === null) return;
+    const text = typeof body.text === 'string' ? body.text.trim() : '';
+    if (text === '') {
+      sendJson(res, 400, { error: 'Expected { text }' });
+      return;
+    }
+    let outcome = /** @type {import('../store/carry-back.js').EditOutcome} */ ('missing');
+    const state = await this.store.update((latest) => {
+      outcome = editEntry(latest, sessionId, entryId, text);
+    });
+    if (outcome === 'missing') {
+      sendJson(res, 404, { error: 'Entry not found' });
+      return;
+    }
+    if (outcome === 'emitted') {
+      sendJson(res, 409, { error: SENT_ENTRY_ERROR });
+      return;
+    }
+    this.broadcast({ type: 'carry-back-updated', sessionId });
+    const entries = entriesFor(state, sessionId);
+    sendJson(res, 200, { entry: entries.find((entry) => entry.id === entryId) ?? null, entries });
   }
 
   /**
