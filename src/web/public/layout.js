@@ -13,8 +13,11 @@ const STORAGE_KEY = 'sidescreen:layout';
 const LIMITS = { sidebarMin: 180, sidebarMax: 480, sidebarDefault: 260, threadMin: 260, documentMin: 300, handle: 6 };
 const KEY_STEP = 16;
 
-/** @typedef {{ sidebarWidth: number, threadWidth: number|null, sidebarHidden: boolean }} LayoutState */
+/** @typedef {'system'|'light'|'dark'} Theme */
+/** @typedef {{ sidebarWidth: number, threadWidth: number|null, sidebarHidden: boolean, theme: Theme }} LayoutState */
 /** @typedef {'sidebar'|'thread'} Pane */
+
+const THEMES = /** @type {Theme[]} */ (['system', 'light', 'dark']);
 
 const root = document.documentElement;
 const layout = /** @type {HTMLElement} */ (document.querySelector('.workspace-layout'));
@@ -40,7 +43,7 @@ function isWidth(value) {
 /** @returns {LayoutState} */
 function readStored() {
   /** @type {LayoutState} */
-  const defaults = { sidebarWidth: LIMITS.sidebarDefault, threadWidth: null, sidebarHidden: false };
+  const defaults = { sidebarWidth: LIMITS.sidebarDefault, threadWidth: null, sidebarHidden: false, theme: 'system' };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw === null) return defaults;
@@ -49,6 +52,7 @@ function readStored() {
       sidebarWidth: isWidth(stored.sidebarWidth) ? stored.sidebarWidth : defaults.sidebarWidth,
       threadWidth: isWidth(stored.threadWidth) ? stored.threadWidth : null,
       sidebarHidden: stored.sidebarHidden === true,
+      theme: THEMES.find((theme) => theme === stored.theme) ?? 'system',
     };
   } catch {
     return defaults;
@@ -102,6 +106,8 @@ function apply() {
   root.style.setProperty('--handle-column', state.sidebarHidden ? '0px' : `${LIMITS.handle}px`);
   root.style.setProperty('--thread-column', shown.thread === null ? `minmax(${LIMITS.threadMin}px, 1fr)` : `${shown.thread}px`);
   root.toggleAttribute('data-sidebar-hidden', state.sidebarHidden);
+  if (state.theme === 'system') root.removeAttribute('data-theme');
+  else root.setAttribute('data-theme', state.theme);
 
   const label = state.sidebarHidden ? 'Show sidebar' : 'Hide sidebar';
   toggle.setAttribute('aria-pressed', String(state.sidebarHidden));

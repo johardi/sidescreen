@@ -37,6 +37,7 @@
     if (isWidth(stored.threadWidth)) {
       root.style.setProperty('--thread-column', `${Math.max(THREAD_MIN, Math.round(stored.threadWidth))}px`);
     }
+    if (stored.theme === 'light' || stored.theme === 'dark') root.setAttribute('data-theme', stored.theme);
   } catch {
     // No storage, or a record this version does not understand: the defaults apply.
   }
