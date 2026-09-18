@@ -257,7 +257,7 @@ body.workspace {
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  padding: 50px 64px 88px;
+  padding: 42px 64px 88px;
 }
 #thread-handle {
   grid-column: 4;
@@ -575,7 +575,7 @@ body[data-resizing] { cursor: col-resize; user-select: none; }
 /* The document: the rendered turn, with base typography only */
 
 .document {
-  max-width: 62ch;
+  max-width: 66ch;
   margin: 0 auto;
   overflow-wrap: anywhere;
   font: 16px/1.6 var(--serif);
@@ -677,7 +677,7 @@ button:disabled { opacity: 0.6; cursor: default; }
 
 /* Thread column: chips, passage, and tabs fixed at the top, the exchanges scrolling, the field fixed at the foot */
 
-.thread-empty { color: var(--fg-muted); margin: 0; padding: 16px 60px; }
+.thread-empty { color: var(--fg-muted); margin: auto; }
 .thread {
   flex: 1 1 auto;
   min-height: 0;
@@ -837,7 +837,7 @@ button:disabled { opacity: 0.6; cursor: default; }
 
 .follow-up-form {
   flex: none;
-  padding: 10px max(60px, calc((100% - 72ch) / 2)) 14px;
+  padding: 16px max(20px, calc((100% - 72ch) / 2)) 10px;
   border-top: 1px solid var(--line);
 }
 .branch-form { display: flex; flex-direction: column; gap: 6px; }

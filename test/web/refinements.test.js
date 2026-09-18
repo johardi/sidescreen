@@ -639,7 +639,7 @@ test('7.1 on a wide window both reading columns stand clear of their panes\' edg
     probe.remove();
     return { articleMax: parseFloat(articleStyle.maxWidth), threadColumn, paddingLeft: parseFloat(exchangesStyle.paddingLeft), paddingRight: parseFloat(exchangesStyle.paddingRight) };
   });
-  assert.ok(article.width <= measured.articleMax + 1, `the article is no wider than its 62ch column: ${article.width} vs ${measured.articleMax}`);
+  assert.ok(article.width <= measured.articleMax + 1, `the article is no wider than its 66ch column: ${article.width} vs ${measured.articleMax}`);
   const thread = await box(page, '.thread-pane');
   const exchanges = measured;
   assert.ok(exchanges.paddingLeft >= 60 && Math.abs(exchanges.paddingLeft - exchanges.paddingRight) <= 1, 'the thread column is centred with at least 60px at each side');
