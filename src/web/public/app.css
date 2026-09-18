@@ -197,8 +197,8 @@ body.workspace {
   min-height: 0;
   min-width: 0;
   display: grid;
-  /* Until the user sets a width the document takes six parts to the thread pane's five */
-  grid-template-columns: var(--sidebar-column) var(--handle-column) minmax(300px, 1.2fr) 6px var(--thread-column);
+  /* Until the user sets a width the document takes seven parts to the thread pane's five */
+  grid-template-columns: var(--sidebar-column) var(--handle-column) minmax(300px, 1.4fr) 6px var(--thread-column);
   grid-template-rows: minmax(0, 1fr);
 }
 .workspace-layout-empty { grid-template-columns: var(--sidebar-column) var(--handle-column) minmax(0, 1fr); }
@@ -690,7 +690,7 @@ button:disabled { opacity: 0.6; cursor: default; }
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 30px max(60px, calc((100% - 72ch) / 2)) 12px;
+  padding: 24px max(60px, calc((100% - 72ch) / 2)) 12px;
 }
 .thread-list {
   list-style: none;

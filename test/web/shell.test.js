@@ -254,14 +254,14 @@ test('3.3 the ask popover sits under its selection after the document pane has s
   assert.deepEqual(consoleErrors, []);
 });
 
-test('4.1 dragging the handles resizes the panes, stops at the minimums, and the document starts a fifth wider than the thread pane', async (t) => {
+test('4.1 dragging the handles resizes the panes, stops at the minimums, and the document starts two fifths wider than the thread pane', async (t) => {
   const { url } = await startServer(t);
   const { page, consoleErrors } = await openBrowser(t, { width: 1200, height: 800 });
   await page.goto(new URL('/turns/prompt-1', url).href);
 
   const start = await widths(page);
   assert.equal(start.sidebar, SIDEBAR_DEFAULT);
-  assert.ok(Math.abs(start.document - start.thread * 1.2) <= 2, `six to five before any drag: ${start.document} vs ${start.thread}`);
+  assert.ok(Math.abs(start.document - start.thread * 1.4) <= 2, `seven to five before any drag: ${start.document} vs ${start.thread}`);
   near(start.sidebar + HANDLE + start.document + HANDLE + start.thread, 1200, 'the three panes and two handles fill the window');
 
   await dragHandle(page, '#thread-handle', -120);
@@ -332,7 +332,7 @@ test('4.2 the handles answer the keyboard, and a double activation restores the 
   assert.equal((await widths(page)).document, DOCUMENT_MIN, 'End takes all the document can give');
   await threadHandle.dblclick();
   const reset = await widths(page);
-  assert.ok(Math.abs(reset.document - reset.thread * 1.2) <= 2, `a double activation restores the six-to-five split: ${reset.document} vs ${reset.thread}`);
+  assert.ok(Math.abs(reset.document - reset.thread * 1.4) <= 2, `a double activation restores the seven-to-five split: ${reset.document} vs ${reset.thread}`);
   assert.deepEqual(consoleErrors, []);
 });
 
@@ -452,7 +452,7 @@ test('5.2 the layout survives a reload, applies to another project in the same b
     await page.goto(new URL('/turns/prompt-1', url).href);
     const start = await widths(page);
     assert.equal(start.sidebar, SIDEBAR_DEFAULT, 'defaults without storage');
-    assert.ok(Math.abs(start.document - start.thread * 1.2) <= 2, `six to five without storage: ${start.document} vs ${start.thread}`);
+    assert.ok(Math.abs(start.document - start.thread * 1.4) <= 2, `seven to five without storage: ${start.document} vs ${start.thread}`);
     await dragHandle(page, '#thread-handle', -100);
     near((await widths(page)).thread, start.thread + 100, 'resizing still works for the life of the page');
     await page.locator('#sidebar-toggle').click();
