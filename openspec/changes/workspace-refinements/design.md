@@ -188,6 +188,15 @@ The second review set both widths from a screenshot at 1871px wide, where the do
 - `--rail-width`: 40px.
 - `--shadow-float`: the popover's shadow, now shared with the composer, the one floating surface pair on the page.
 - The composer keeps the 2px signal edge on its header bar, so the one weighted element of the shell stays the one that reaches the terminal.
+- `--serif`: a text serif the platform ships, `Charter, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, Cambria, "Noto Serif", "DejaVu Serif", serif`, never Times, for the two regions where an agent wrote: the document at 16px on 1.6 and the answer bodies at 15px on 1.6.
+  Everything the user writes or the interface says stays in the interface face, so the reader tells the agent's voice from their own and from the chrome at a glance.
+  Code inside either region stays monospace.
+
+### The sent note is a moment, not a tally
+
+The composer's "sent to the terminal" note used to count every entry ever emitted, so it grew for the life of the session and said nothing about what had just happened.
+It now names the latest batch, the entries that share the newest emit timestamp, and shows for 30 seconds after that emit, then clears itself on a timer.
+The count comes from the store, so a reload within the window still shows it; nothing new is persisted.
 
 Reviewed against the shell's principle of quiet chrome: the meta line, four text buttons, and a fixed strip leave the page; one floating card and a row of icons arrive.
 

@@ -43,3 +43,9 @@
 - [x] 7.5 Size the composer to the document pane: open and maximized span the pane's width with 16px insets, open up to 50% of the pane's height, maximized a fixed 75%, the minimized bar unchanged in the corner; verify with the browser tests on the composer's boxes in each state
 - [x] 7.6 Remove the Cancel and Ask buttons from the ask popover, leaving Escape and Enter; verify with a browser test that the popover has no buttons, Escape closes it, and Enter still asks
 - [x] 7.7 Review on screen at 1440 by 900 and 1871 by 868, then run `npm run check` and confirm lint, typecheck, and every test pass
+
+## 8. Third review
+
+- [x] 8.1 Make the composer's sent note name the latest batch only, entries that share one emit timestamp, and show it for 30 seconds after that emit, then clear it; verify with a browser test that two emits show the second batch's count rather than the total, that a reload within the window still shows it, and that a batch backdated past the window shows nothing
+- [x] 8.2 Set a platform serif face on the document and on the answer bodies only, sized 16px on 1.6 and 15px on 1.6, with code inside them still monospace; verify with a browser test that those two regions render in the serif stack and that the question, the follow-up field, the ask popover, the carry-back text box, the answer's source line, and the anchor numbers keep the interface face
+- [x] 8.3 Run `npm run check` and confirm lint, typecheck, and every test pass
