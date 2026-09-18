@@ -178,9 +178,9 @@ Showing the thumb only while the pointer is over the region is what "hidden when
 
 ### Margins
 
-The document pane's side padding grows from 16px to 64px, and its article narrows from a 76ch to a 66ch centred column, so on a wide pane the text sits well clear of either edge.
-The thread pane's top block, exchanges, and field share a centred 72ch column with at least 40px at each side, applied as padding on each part so the rule between them still runs the pane's full width.
-The second review set both widths from a screenshot at 1871px wide, where the document's text measured 66 characters and the thread's 72, each about 80px from its pane's edges.
+The document pane's side padding grows from 16px to 64px, and its article narrows from a 76ch to a 62ch centred column, so on a wide pane the text sits well clear of either edge.
+The thread pane's top block, exchanges, and field share a centred 72ch column with at least 60px at each side, applied as padding on each part so the rule between them still runs the pane's full width.
+The second review set the widths from a screenshot at 1871px wide, where the document's text measured 66 characters and the thread's 72, each about 80px from its pane's edges; the third review, reading the result, narrowed the document to 62 characters and raised the thread's minimum margin to 60px by hand.
 
 ### Tokens added
 
@@ -188,7 +188,7 @@ The second review set both widths from a screenshot at 1871px wide, where the do
 - `--rail-width`: 40px.
 - `--shadow-float`: the popover's shadow, now shared with the composer, the one floating surface pair on the page.
 - The composer keeps the 2px signal edge on its header bar, so the one weighted element of the shell stays the one that reaches the terminal.
-- `--serif`: a text serif the platform ships, `Charter, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, Cambria, "Noto Serif", "DejaVu Serif", serif`, never Times, for the two regions where an agent wrote: the document at 16px on 1.6 and the answer bodies at 15px on 1.6.
+- `--serif`: a text serif the platform ships, `Charter, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, Cambria, "Noto Serif", "DejaVu Serif", serif`, never Times, for the two regions where an agent wrote: the document and the answer bodies, both at 16px on 1.6.
   Everything the user writes or the interface says stays in the interface face, so the reader tells the agent's voice from their own and from the chrome at a glance.
   Code inside either region stays monospace.
 
